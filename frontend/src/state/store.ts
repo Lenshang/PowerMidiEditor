@@ -17,7 +17,7 @@ export type ToolId =
   | 'razor' | 'eraser' | 'audition' | 'step';
 
 /** Which lane the bottom editor panel shows. */
-export type LaneMode = 'velocity' | 'cc' | 'pb';
+export type LaneMode = 'velocity' | 'cc' | 'pb' | 'lyric';
 
 /** Frequent CC numbers for the lane selector. */
 export const CC_CHOICES: Array<{ label: string; cc: number }> = [

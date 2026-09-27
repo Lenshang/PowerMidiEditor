@@ -169,6 +169,16 @@ bool MidiFileIO::exportMidi (const DocumentSnapshot& snapshot, const juce::File&
         }
     }
 
+    // Lyrics: SMF FF05 Lyric meta at each tagged note-on — this is the
+    // interchange path vocal synths (Synthesizer V, VOCALOID, CeVIO…) read.
+    for (const auto& n : snapshot.notes)
+    {
+        if (n.muted || n.lyric.isEmpty())
+            continue;
+        const int on = (int) juce::roundToInt (n.start * ticksPerQuarter);
+        seq.addEvent (juce::MidiMessage::textMetaEvent (5, n.lyric), on);
+    }
+
     // Controllers + pitch bend: bake the piecewise-linear ramps into the file.
     bakeCcLanes (seq, snapshot.ccs);
     bakePbLanes (seq, snapshot.pbs);
@@ -213,6 +223,17 @@ bool MidiFileIO::importFromStream (juce::InputStream& stream, ImportResult& out)
 
     struct Pending { double start; float velocity; int channel; };
     std::map<std::pair<int, int>, Pending> pendingNotes; // (channel, pitch) -> start
+    std::map<int, juce::String> lyricsByTick;            // SMF FF05 (and FF01) lyrics
+
+    auto metaText = [] (const juce::MidiMessage& m) -> juce::String
+    {
+        if (! m.isMetaEvent())
+            return {};
+        const int type = m.getMetaEventType();
+        if (type != 0x05 && type != 0x01) // lyric / text
+            return {};
+        return m.getTextFromTextMetaEvent().trim();
+    };
 
     for (int track = 0; track < mf.getNumTracks(); ++track)
     {
@@ -226,6 +247,14 @@ bool MidiFileIO::importFromStream (juce::InputStream& stream, ImportResult& out)
                 continue;
             const auto msg = holder->message;
             const double t = tickToQuarter ((int) holder->message.getTimeStamp());
+
+            if (msg.isMetaEvent())
+            {
+                auto text = metaText (msg);
+                if (text.isNotEmpty())
+                    lyricsByTick[(int) holder->message.getTimeStamp()] = text;
+                continue;
+            }
 
             if (msg.isNoteOn())
             {
@@ -264,6 +293,15 @@ bool MidiFileIO::importFromStream (juce::InputStream& stream, ImportResult& out)
                 out.pbs.push_back (e);
             }
         }
+    }
+
+    // attach lyrics to the note starting at each lyric tick
+    for (auto& n : out.notes)
+    {
+        const int tick = (int) juce::roundToInt (n.start * ticksPerQ);
+        auto it = lyricsByTick.find (tick);
+        if (it != lyricsByTick.end())
+            n.lyric = it->second;
     }
 
     // close any note left hanging at the end of the file

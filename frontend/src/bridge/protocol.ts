@@ -19,6 +19,8 @@ export interface Note {
   c: number;
   /** expression articulation id, -1 = none */
   a: number;
+  /** sung syllable, exported as SMF FF05 lyric meta */
+  ly?: string;
 }
 
 export interface NoteDraft {

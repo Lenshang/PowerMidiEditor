@@ -298,6 +298,58 @@ static void testControllerAndPitchBend()
     CHECK (doc.getSnapshot()->pbs.empty());
 }
 
+static void testLyricRoundTrip()
+{
+    MidiClipDocument doc;
+    Note a; a.pitch = 60; a.start = 0.0; a.length = 0.5; a.lyric = "ni";
+    Note b; b.pitch = 62; b.start = 0.5; b.length = 0.5; b.lyric = "hao";
+    Note c; c.pitch = 64; c.start = 1.0; c.length = 0.5; // no lyric
+    doc.beginTransaction ("lyrics");
+    doc.addNote (a);
+    doc.addNote (b);
+    doc.addNote (c);
+    doc.commitTransaction();
+
+    const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("PmeTests_Lyrics.mid");
+    CHECK (MidiFileIO::exportMidi (*doc.getSnapshot(), temp));
+
+    // the exported file carries FF05 lyric meta at the tagged note-ons
+    {
+        juce::MidiFile mf;
+        juce::FileInputStream in (temp);
+        CHECK (mf.readFrom (in));
+        int lyricCount = 0;
+        bool sawNi = false, sawHao = false;
+        for (int tr = 0; tr < mf.getNumTracks(); ++tr)
+            for (int i = 0; i < mf.getTrack (tr)->getNumEvents(); ++i)
+            {
+                const auto& m = mf.getTrack (tr)->getEventPointer (i)->message;
+                if (m.isMetaEvent() && m.getMetaEventType() == 0x05)
+                {
+                    ++lyricCount;
+                    const auto text = m.getTextFromTextMetaEvent();
+                    if (text == "ni") sawNi = true;
+                    if (text == "hao") sawHao = true;
+                }
+            }
+        CHECK (lyricCount == 2);
+        CHECK (sawNi && sawHao);
+    }
+
+    // import re-attaches lyrics to the right notes; untagged note stays empty
+    MidiFileIO::ImportResult imported;
+    CHECK (MidiFileIO::importMidi (temp, imported));
+    CHECK (imported.notes.size() == 3);
+    for (const auto& n : imported.notes)
+    {
+        if (n.pitch == 60) CHECK (n.lyric == "ni");
+        if (n.pitch == 62) CHECK (n.lyric == "hao");
+        if (n.pitch == 64) CHECK (n.lyric.isEmpty());
+    }
+    temp.deleteFile();
+}
+
 static void testExpressionMapImport()
 {
     // Ample Sound .exprmap text format: "Name,Keyswitch" lines (CRLF ok)
@@ -628,6 +680,7 @@ int main()
     testCurveInterpolation();
     testInternalTransport();
     testExpressionMapImport();
+    testLyricRoundTrip();
     testChordsAndArticulations();
     testMidiMemoryImport();
 

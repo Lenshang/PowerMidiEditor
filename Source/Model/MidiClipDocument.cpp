@@ -420,6 +420,8 @@ juce::var MidiClipDocument::snapshotToJson (const DocumentSnapshot& s)
         o->setProperty ("m", n.muted);
         o->setProperty ("c", n.channel);
         o->setProperty ("a", n.art);
+        if (n.lyric.isNotEmpty())
+            o->setProperty ("ly", n.lyric);
         arr.add (juce::var (o));
     }
     doc->setProperty ("notes", arr);
@@ -498,6 +500,8 @@ juce::var MidiClipDocument::toVar() const
         o->setProperty ("m", n.muted);
         o->setProperty ("c", n.channel);
         o->setProperty ("a", n.art);
+        if (n.lyric.isNotEmpty())
+            o->setProperty ("ly", n.lyric);
         arr.add (juce::var (o));
         maxId = juce::jmax (maxId, id);
     }

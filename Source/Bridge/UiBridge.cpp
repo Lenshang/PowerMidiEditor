@@ -66,6 +66,7 @@ Note noteFromVar (const juce::var& v)
     n.muted = propBool (*o, "m");
     n.channel = (int) propNum (*o, "c", 1.0);
     n.art = (int) propNum (*o, "a", -1.0);
+    n.lyric = propStr (*o, "ly");
     return n;
 }
 
@@ -129,6 +130,7 @@ Note fullNoteFromVar (const juce::var& v, const DocumentSnapshot& snap)
             if (! o->hasProperty ("m")) n.muted = e->muted;
             if (! o->hasProperty ("c")) n.channel = e->channel;
             if (! o->hasProperty ("a")) n.art = e->art;
+            if (! o->hasProperty ("ly")) n.lyric = e->lyric;
         }
     }
     return n;

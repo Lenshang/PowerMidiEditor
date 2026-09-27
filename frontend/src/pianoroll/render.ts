@@ -275,7 +275,7 @@ export function drawNotes(
     for (const n of doc.notes) {
       if (n.s + n.l < startPpq || n.s > endPpq) continue;
       if (selection.has(n.id) !== wantSelected) continue;
-      drawNote(ctx, v, c, n, wantSelected, pcs != null && pcs.has(((n.p % 12) + 12) % 12), drumMode, artNames);
+      drawNote(ctx, v, c, n, wantSelected, pcs != null && pcs.has(((n.p % 12) + 12) % 12), drumMode, artNames, n.ly);
     }
   };
   drawPass(false);
@@ -290,7 +290,7 @@ export function drawNotes(
 function drawNote(
   ctx: CanvasRenderingContext2D, v: ViewState, c: ThemeColors,
   n: Note, selected: boolean, inChord = false, drumMode = false,
-  artNames: Map<number, string> = new Map(),
+  artNames: Map<number, string> = new Map(), lyric?: string,
 ): void {
   const x = xOfPpq(v, n.s);
   const y = yOfPitch(v, n.p);
@@ -346,6 +346,14 @@ function drawNote(
     } else {
       ctx.fillText(pitch, x + 3, y + h / 2 + 0.5);
     }
+  }
+
+  if (lyric != null && lyric !== '' && v.rowHeight >= 14) {
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = c['text-dim'];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(lyric, x + w / 2, y + h + 2);
   }
 }
 

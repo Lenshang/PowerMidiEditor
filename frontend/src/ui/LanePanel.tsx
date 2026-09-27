@@ -50,6 +50,26 @@ export function LanePanel(): React.ReactElement {
   const sizeRef = useRef({ w: 800, h: LANE_H });
   const dragRef = useRef<DragState | null>(null);
   const [drawMode, setDrawMode] = useState<'point' | 'line' | 'free'>('point');
+  const [lyricBatch, setLyricBatch] = useState('');
+
+  // Distribute space-separated syllables onto notes in time order: the
+  // selection when there is one, otherwise the whole take.
+  const applyLyricBatch = () => {
+    const st = useStore.getState();
+    const syllables = lyricBatch.trim().split(/s+/).filter(Boolean);
+    if (syllables.length === 0) { st.setHint(ti('lane.lyricEmpty')); return; }
+    let targets = st.doc.notes;
+    if (st.selection.length > 0)
+      targets = targets.filter((n) => st.selection.includes(n.id));
+    targets = [...targets].sort((a, b) => a.s - b.s);
+    if (targets.length === 0) { st.setHint(ti('disp.noSelection')); return; }
+    const ops: EditOp[] = targets.map((n, i) => ({
+      op: 'update' as const,
+      note: { id: n.id, ly: i < syllables.length ? syllables[i] : '' },
+    }));
+    commitOps(ops, ti('lane.lyricApply'));
+    st.setHint(ti('lane.lyricApplied', { count: Math.min(targets.length, syllables.length) }));
+  };
   const [addCcOpen, setAddCcOpen] = useState(false);
   const [newCc, setNewCc] = useState<number>(11);
 
@@ -573,6 +593,7 @@ export function LanePanel(): React.ReactElement {
     { id: 'velocity', label: 'lane.velocity' },
     { id: 'cc', label: 'CC' },
     { id: 'pb', label: 'lane.pb' },
+    { id: 'lyric', label: 'lane.lyric' },
   ];
 
   return (
@@ -675,17 +696,49 @@ export function LanePanel(): React.ReactElement {
           <button className="mini-btn" onClick={() => clearLane(0)}>{ti('lane.clear')}</button>
         )}
       </div>
-      <div
-        ref={wrapRef}
-        className="lane-body"
-        style={{ height: LANE_H }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <canvas ref={baseRef} className="lane-canvas" />
-        <canvas ref={overlayRef} className="lane-canvas" />
-      </div>
+      {laneMode === 'lyric' ? (
+        <div className="lane-body lyric-body" style={{ height: LANE_H }}>
+          <div className="lyric-batch">
+            <textarea
+              className="lyric-input"
+              placeholder={ti('lane.lyricBatchHint')}
+              value={lyricBatch}
+              onChange={(e) => setLyricBatch(e.target.value)}
+            />
+            <button className="mini-btn primary" onClick={applyLyricBatch}>{ti('lane.lyricApply')}</button>
+          </div>
+          <div className="lyric-list">
+            {doc.notes.map((n) => (
+              <div key={n.id} className={`lyric-cell ${selection.includes(n.id) ? 'sel' : ''}`}
+                title={`p=${n.p}  t=${n.s.toFixed(2)}`}>
+                <span className="lyric-pitch">{n.p}</span>
+                <input
+                  className="lyric-input"
+                  value={n.ly ?? ''}
+                  onChange={(e) => {
+                    useStore.getState().editDoc(
+                      [{ op: 'update' as const, note: { id: n.id, ly: e.target.value } }],
+                      ti('lane.lyricEdit'));
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div
+          ref={wrapRef}
+          className="lane-body"
+          style={{ height: LANE_H }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        >
+          <canvas ref={baseRef} className="lane-canvas" />
+          <canvas ref={overlayRef} className="lane-canvas" />
+        </div>
+      )}
       {addCcOpen && (
         <div className="modal-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setAddCcOpen(false); }}>
           <div className="modal cc-add-modal">

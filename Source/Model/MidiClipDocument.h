@@ -17,6 +17,7 @@ struct Note
     bool muted = false;
     int channel = 1;       // 1..16
     int art = -1;          // expression articulation id (see ArticulationDef), -1 = none
+    juce::String lyric;    // sung syllable, exported as SMF FF05 Lyric meta events
 
     bool operator== (const Note& o) const
     {
