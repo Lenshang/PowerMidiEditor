@@ -50,13 +50,17 @@ export function LanePanel(): React.ReactElement {
   const sizeRef = useRef({ w: 800, h: LANE_H });
   const dragRef = useRef<DragState | null>(null);
   const [drawMode, setDrawMode] = useState<'point' | 'line' | 'free'>('point');
-  const [lyricBatch, setLyricBatch] = useState('');
+  const lyricBatchRef = useRef<HTMLInputElement>(null);
+  const [lyricSplit, setLyricSplit] = useState<'space' | 'char'>('space');
 
   // Distribute space-separated syllables onto notes in time order: the
   // selection when there is one, otherwise the whole take.
   const applyLyricBatch = () => {
     const st = useStore.getState();
-    const syllables = lyricBatch.trim().split(/s+/).filter(Boolean);
+    const raw = lyricBatchRef.current ? lyricBatchRef.current.value : '';
+    const syllables = lyricSplit === 'char'
+      ? Array.from(raw.replace(/\s+/g, ''))
+      : raw.trim().split(/\s+/).filter(Boolean);
     if (syllables.length === 0) { st.setHint(ti('lane.lyricEmpty')); return; }
     let targets = st.doc.notes;
     if (st.selection.length > 0)
@@ -68,6 +72,7 @@ export function LanePanel(): React.ReactElement {
       note: { id: n.id, ly: i < syllables.length ? syllables[i] : '' },
     }));
     commitOps(ops, ti('lane.lyricApply'));
+    if (lyricBatchRef.current) lyricBatchRef.current.value = '';
     st.setHint(ti('lane.lyricApplied', { count: Math.min(targets.length, syllables.length) }));
   };
   const [addCcOpen, setAddCcOpen] = useState(false);
@@ -683,7 +688,9 @@ export function LanePanel(): React.ReactElement {
             ? ti('lane.hintVelocity')
             : laneMode === 'cc'
               ? ti('lane.hintCc')
-              : ti('lane.hintPb')}
+              : laneMode === 'lyric'
+                ? ti('lane.hintLyric')
+                : ti('lane.hintPb')}
         </span>
         <span className="lane-spring" />
         {laneMode === 'cc' ? (
@@ -696,37 +703,70 @@ export function LanePanel(): React.ReactElement {
           <button className="mini-btn" onClick={() => clearLane(0)}>{ti('lane.clear')}</button>
         )}
       </div>
-      {laneMode === 'lyric' ? (
-        <div className="lane-body lyric-body" style={{ height: LANE_H }}>
-          <div className="lyric-batch">
-            <textarea
-              className="lyric-input"
-              placeholder={ti('lane.lyricBatchHint')}
-              value={lyricBatch}
-              onChange={(e) => setLyricBatch(e.target.value)}
-            />
-            <button className="mini-btn primary" onClick={applyLyricBatch}>{ti('lane.lyricApply')}</button>
-          </div>
-          <div className="lyric-list">
-            {doc.notes.map((n) => (
-              <div key={n.id} className={`lyric-cell ${selection.includes(n.id) ? 'sel' : ''}`}
-                title={`p=${n.p}  t=${n.s.toFixed(2)}`}>
-                <span className="lyric-pitch">{n.p}</span>
-                <input
-                  className="lyric-input"
-                  value={n.ly ?? ''}
-                  onChange={(e) => {
-                    useStore.getState().editDoc(
-                      [{ op: 'update' as const, note: { id: n.id, ly: e.target.value } }],
-                      ti('lane.lyricEdit'));
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                />
+      {laneMode === 'lyric' && (() => {
+        // Lyric strip aligned with the piano-roll timeline: one input per
+        // note, positioned at its start; Enter commits and advances to the
+        // next note to the right (fast syllable entry, SynthV-style).
+        const px = view.pxPerPpq;
+        const scrollX = view.scrollXPpq;
+        const vis0 = scrollX - 0.5;
+        const vis1 = scrollX + view.width / px;
+        const ordered = [...doc.notes].sort((a, b) => a.s - b.s);
+        const advance = (idx: number) => {
+          const next = document.querySelector<HTMLInputElement>(
+            `.lyric-strip input[data-i="${idx + 1}"]`);
+          if (next) { next.focus(); next.select(); }
+        };
+        return (
+          <div className="lyric-body" style={{ height: LANE_H }}>
+            <div className="lyric-batch">
+              <input className="lyric-batch-input" placeholder={ti('lane.lyricBatchHint')}
+                ref={lyricBatchRef}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyLyricBatch(); }} />
+              <div className="lyric-split">
+                <button className={`mini-btn ${lyricSplit === 'space' ? 'active' : ''}`}
+                  title={ti('lane.lyricSplitSpace')}
+                  onClick={() => setLyricSplit('space')}>{ti('lane.lyricSplitSpace')}</button>
+                <button className={`mini-btn ${lyricSplit === 'char' ? 'active' : ''}`}
+                  title={ti('lane.lyricSplitChar')}
+                  onClick={() => setLyricSplit('char')}>{ti('lane.lyricSplitChar')}</button>
               </div>
-            ))}
+              <button className="mini-btn primary" onClick={applyLyricBatch}>{ti('lane.lyricApply')}</button>
+              <span className="lyric-hint">{ti('lane.hintLyric')}</span>
+            </div>
+            <div className="lyric-strip">
+              <div className="lyric-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
+                {ordered.map((n, idx) => {
+                  const x = n.s * px;
+                  if (x < vis0 * px - 160 || x > vis1 * px + 160) return null;
+                  const w = Math.max(56, Math.min(n.l * px - 4, 220));
+                  return (
+                    <div key={n.id} className={`lyric-cell ${selection.includes(n.id) ? 'sel' : ''}`}
+                      style={{ left: x, width: w }} title={`p=${n.p}`}>
+                      <input data-i={ordered.indexOf(n)} value={n.ly ?? ''}
+                        onChange={(e) => {
+                          useStore.getState().editDoc(
+                            [{ op: 'update' as const, note: { id: n.id, ly: e.target.value } }],
+                            ti('lane.lyricEdit'));
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            useStore.getState().editDoc(
+                              [{ op: 'update' as const, note: { id: n.id, ly: (e.target as HTMLInputElement).value } }],
+                              ti('lane.lyricEdit'));
+                            advance(ordered.indexOf(n));
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      ) : (
+        );
+      })()}
+      {laneMode !== 'lyric' && (
         <div
           ref={wrapRef}
           className="lane-body"
