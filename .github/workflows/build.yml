@@ -130,7 +130,7 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then
             powershell -Command "Compress-Archive -Path PowerMidiEditor.vst3, PowerMidiEditor.clap, PowerMidiEditor.exe -DestinationPath PowerMidiEditor-win-x64.zip -Force"
           else
-            ditto -c -k --sequesterRDir PowerMidiEditor.vst3 PowerMidiEditor.component PowerMidiEditor.clap PowerMidiEditor.app "PowerMidiEditor-mac-universal.zip"
+            zip -r -y "PowerMidiEditor-mac-universal.zip" PowerMidiEditor.vst3 PowerMidiEditor.component PowerMidiEditor.clap PowerMidiEditor.app
           fi
           ls -la
 
