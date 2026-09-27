@@ -172,8 +172,11 @@ if(PME_BUILD_TESTS)
 
     # PmeHostClap — loads the built .clap like a DAW and classifies every wire
     # event: proves pitch bend leaves the plugin as raw MIDI, never as notes.
-    add_executable(PmeHostClap Tests/PmeHostClap.cpp)
-    target_include_directories(PmeHostClap PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/libs/clap-juce-extensions/clap-libs/clap/include)
-    target_compile_definitions(PmeHostClap PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    # Uses LoadLibrary to load the .clap, so Windows only.
+    if(WIN32)
+        add_executable(PmeHostClap Tests/PmeHostClap.cpp)
+        target_include_directories(PmeHostClap PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/libs/clap-juce-extensions/clap-libs/clap/include)
+        target_compile_definitions(PmeHostClap PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
 endif()
