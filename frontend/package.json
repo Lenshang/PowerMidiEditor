@@ -1,0 +1,30 @@
+{
+  "name": "pme-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "zip": "node scripts/make-zip.mjs",
+    "package": "npm run build && npm run zip"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "adm-zip": "^0.5.16",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}

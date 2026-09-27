@@ -1,0 +1,20 @@
+# Build artifacts
+build/
+build-*/
+*.user
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# JUCE local copy (framework, not project code)
+JUCE/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vs/
+.vscode/
+
+# ZCode assistant cache
+.zcode/

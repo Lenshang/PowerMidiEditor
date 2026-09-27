@@ -1,0 +1,143 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  JUCE_VERSION: 9.0.2
+  WEBVIEW2_VERSION: 1.0.3179.45
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: win-x64
+          - os: macos-14
+            name: mac-universal
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend (embedded UI)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run package
+
+      - name: Fetch JUCE ${{ env.JUCE_VERSION }} + apply project patches
+        shell: bash
+        run: |
+          curl -L "https://github.com/juce-framework/JUCE/archive/refs/tags/${JUCE_VERSION}.tar.gz" -o juce.tar.gz
+          tar -xzf juce.tar.gz
+          mv "JUCE-${JUCE_VERSION}" JUCE
+          cp -Rv ci/juce_overrides/. JUCE/
+          rm juce.tar.gz
+
+      - name: Fetch WebView2 SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          nuget install Microsoft.Web.WebView2 -Version $WEBVIEW2_VERSION -ExcludeVersion -OutputDirectory build/webview2_shim
+          test -f build/webview2_shim/Microsoft.Web.WebView2/build/native/include/WebView2.h
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Configure (macOS, universal)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release --parallel
+
+      - name: Unit tests
+        shell: bash
+        run: ./build/PmeTests_artefacts/Release/PmeTests
+
+      - name: Mini host smoke test (VST3)
+        shell: bash
+        run: ./build/PmeHost_artefacts/Release/PmeHost "./build/PowerMidiEditor_artefacts/Release/VST3/PowerMidiEditor.vst3" --no-ui
+
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for b in \
+            "build/PowerMidiEditor_artefacts/Release/VST3/PowerMidiEditor.vst3" \
+            "build/PowerMidiEditor_artefacts/Release/AU/PowerMidiEditor.component" \
+            "build/PowerMidiEditor_artefacts/Release/CLAP/PowerMidiEditor.clap" \
+            "build/PowerMidiEditor_artefacts/Release/Standalone/PowerMidiEditor.app"; do
+            [ -e "$b" ] && codesign --force --deep -s - "$b"
+          done
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          A=build/PowerMidiEditor_artefacts/Release
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp -r "$A/VST3/PowerMidiEditor.vst3" dist/
+            cp "$A/CLAP/PowerMidiEditor.clap" dist/
+            cp "$A/Standalone/PowerMidiEditor.exe" dist/PowerMidiEditor.exe
+          else
+            cp -R "$A/VST3/PowerMidiEditor.vst3" dist/
+            cp -R "$A/AU/PowerMidiEditor.component" dist/
+            cp "$A/CLAP/PowerMidiEditor.clap" dist/
+            cp -R "$A/Standalone/PowerMidiEditor.app" dist/
+          fi
+
+      - name: Zip artifacts
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -Command "Compress-Archive -Path PowerMidiEditor.vst3, PowerMidiEditor.clap, PowerMidiEditor.exe -DestinationPath PowerMidiEditor-win-x64.zip -Force"
+          else
+            ditto -c -k --sequesterRDir PowerMidiEditor.vst3 PowerMidiEditor.component PowerMidiEditor.clap PowerMidiEditor.app "PowerMidiEditor-mac-universal.zip"
+          fi
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PowerMidiEditor-${{ matrix.name }}
+          path: dist/PowerMidiEditor-*.zip
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*.zip
