@@ -140,6 +140,8 @@ const en: Record<string, string> = {
   'pr.moveChord': 'Move chord',
   'pr.resizeChord': 'Resize chord',
   'pr.dropToImport': 'Release to import MIDI file',
+  'pr.lyricBatchFrom': 'Batch lyrics from this note…',
+  'pr.lyricBatchNote': 'Fills this note and all notes after it, in time order.',
   'pr.drawError': 'Draw error: {msg}',
 
   // --- dispatch hints --------------------------------------------------------
@@ -429,6 +431,8 @@ const zhHans: Record<string, string> = {
   'pr.moveChord': '移动和弦',
   'pr.resizeChord': '调整和弦长度',
   'pr.dropToImport': '松开导入 MIDI 文件',
+  'pr.lyricBatchFrom': '批量输入歌词（从此音符向后）…',
+  'pr.lyricBatchNote': '从当前音符开始按时间顺序向后填充。',
   'pr.drawError': '绘制错误: {msg}',
 
   'disp.selectFirst': '先选择音符',
@@ -712,6 +716,8 @@ const zhHant: Partial<Record<string, string>> = {
   'pr.moveChord': '移動和弦',
   'pr.resizeChord': '調整和弦長度',
   'pr.dropToImport': '鬆開匯入 MIDI 檔案',
+  'pr.lyricBatchFrom': '從此音符批次填入歌詞…',
+  'pr.lyricBatchNote': '從此音符起依時間順序向後填充。',
   'pr.drawError': '繪製錯誤: {msg}',
 
   'disp.selectFirst': '先選取音符',
@@ -993,6 +999,8 @@ const ja: Partial<Record<string, string>> = {
   'pr.moveChord': 'コード移動',
   'pr.resizeChord': 'コード長を変更',
   'pr.dropToImport': 'ドロップで MIDI を読み込み',
+  'pr.lyricBatchFrom': 'このノート以降に歌詞を一括入力…',
+  'pr.lyricBatchNote': 'このノートから時系列に後ろへ填充します。',
   'pr.drawError': '描画エラー: {msg}',
 
   'disp.selectFirst': '先にノートを選択してください',

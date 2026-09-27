@@ -3,6 +3,7 @@ import { getBridge } from '../bridge/bridge';
 import type { MidiInEvent, Note } from '../bridge/protocol';
 import { gridStepPpq, midiBus, snapPpq, transportClock, useStore } from '../state/store';
 import { runAction } from '../state/dispatch';
+import type { EditOp } from '../bridge/protocol';
 import { t } from '../i18n';
 import { bindingFromWheel, resolveShortcuts } from '../state/shortcuts';
 import { themeColors } from '../ui/themes';
@@ -90,6 +91,28 @@ export function PianoRoll(): React.ReactElement {
   const miniRef = useRef<HTMLCanvasElement>(null);
   const contentEndRef = useRef(32);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; ppq: number; noteId: number | null } | null>(null);
+  const [lyricFromModal, setLyricFromModal] = useState<number | null>(null);
+  const [lyricFromText, setLyricFromText] = useState('');
+  const [lyricFromSplit, setLyricFromSplit] = useState<'space' | 'char'>('char');
+
+  const commitLyricFrom = () => {
+    if (lyricFromModal == null) return;
+    const st = useStore.getState();
+    const ordered = [...st.doc.notes].sort((x, y) => x.s - y.s);
+    const startIdx = ordered.findIndex((x) => x.id === lyricFromModal);
+    const targets = startIdx >= 0 ? ordered.slice(startIdx) : [];
+    const syllables = lyricFromSplit === 'char'
+      ? Array.from(lyricFromText.replace(/\s+/g, ''))
+      : lyricFromText.trim().split(/\s+/).filter(Boolean);
+    const ops: EditOp[] = [];
+    for (let i = 0; i < targets.length && i < syllables.length; i++)
+      ops.push({ op: 'update' as const, note: { id: targets[i].id, ly: syllables[i] } });
+    if (ops.length > 0) {
+      st.editDoc(ops, t('lane.lyricApply'));
+      st.setHint(t('lane.lyricApplied', { count: ops.length }));
+    }
+    setLyricFromModal(null);
+  };
 
   // --- viewport size --------------------------------------------------------
   useEffect(() => {
@@ -855,6 +878,7 @@ export function PianoRoll(): React.ReactElement {
         { label: t('pr.humanizeVel'), run: () => runAction('edit.humanize') },
         { label: t('pr.legato'), run: () => runAction('edit.legato') },
         { label: t('pr.clearArticulationTag'), run: () => st.editDoc([{ op: 'update', note: { id, a: -1 } }], t('pr.clearArticulation')) },
+        { label: t('pr.lyricBatchFrom'), run: () => { setLyricFromText(''); setLyricFromModal(id); } },
       ];
     }
     return [
@@ -1011,6 +1035,39 @@ export function PianoRoll(): React.ReactElement {
       </div>
       <canvas ref={miniRef} className="roll-minimap" height={MINIMAP_H}
         onPointerDown={onMiniPointerDown} onPointerMove={onMiniPointerMove} onPointerUp={onMiniPointerUp} />
+      {lyricFromModal != null && (
+        <div className="modal-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setLyricFromModal(null); }}>
+          <div className="modal lyric-from-modal">
+            <div className="modal-head">
+              <strong>{t('pr.lyricBatchFrom')}</strong>
+              <button className="tb-btn" onClick={() => setLyricFromModal(null)} title={t('lane.close')}>✕</button>
+            </div>
+            <div className="modal-body">
+              <input
+                className="lyric-batch-input"
+                autoFocus
+                placeholder={t('lane.lyricBatchHint')}
+                value={lyricFromText}
+                onChange={(e) => setLyricFromText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitLyricFrom();
+                }}
+              />
+              <div className="lyric-split" style={{ marginTop: 8 }}>
+                <button className={`mini-btn ${lyricFromSplit === 'space' ? 'active' : ''}`}
+                  onClick={() => setLyricFromSplit('space')}>{t('lane.lyricSplitSpace')}</button>
+                <button className={`mini-btn ${lyricFromSplit === 'char' ? 'active' : ''}`}
+                  onClick={() => setLyricFromSplit('char')}>{t('lane.lyricSplitChar')}</button>
+                <span className="lyric-hint">{t('pr.lyricBatchNote')}</span>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="mini-btn" onClick={() => setLyricFromModal(null)}>{t('lane.cancel')}</button>
+              <button className="mini-btn primary" onClick={commitLyricFrom}>{t('lane.create')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
