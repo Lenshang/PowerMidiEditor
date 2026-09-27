@@ -116,9 +116,10 @@ jobs:
             cp "$A/CLAP/PowerMidiEditor.clap" dist/
             cp "$A/Standalone/PowerMidiEditor.exe" dist/PowerMidiEditor.exe
           else
+            # on macOS the CLAP is a bundle directory like VST3/AU/app
             cp -R "$A/VST3/PowerMidiEditor.vst3" dist/
             cp -R "$A/AU/PowerMidiEditor.component" dist/
-            cp "$A/CLAP/PowerMidiEditor.clap" dist/
+            cp -R "$A/CLAP/PowerMidiEditor.clap" dist/
             cp -R "$A/Standalone/PowerMidiEditor.app" dist/
           fi
 
