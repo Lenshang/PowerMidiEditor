@@ -58,10 +58,16 @@ jobs:
           nuget install Microsoft.Web.WebView2 -Version $WEBVIEW2_VERSION -ExcludeVersion -OutputDirectory build/webview2_shim
           test -f build/webview2_shim/Microsoft.Web.WebView2/build/native/include/WebView2.h
 
-      - name: Configure (Windows)
+      - name: Setup MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure (Windows, Ninja)
         if: runner.os == 'Windows'
         shell: bash
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Configure (macOS, universal)
         if: runner.os == 'macOS'
