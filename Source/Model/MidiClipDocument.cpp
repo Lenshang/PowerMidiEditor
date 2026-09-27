@@ -354,7 +354,10 @@ void MidiClipDocument::clear()
 void MidiClipDocument::publish()
 {
     auto s = std::make_shared<DocumentSnapshot>();
-    s->revision = snapshot.load()->revision + 1;
+    {
+        const juce::SpinLock::ScopedLockType sl (snapshotLock);
+        s->revision = snapshot->revision + 1;
+    }
     s->notes.reserve (notes.size());
     for (const auto& [id, n] : notes)
         s->notes.push_back (n);
@@ -392,7 +395,10 @@ void MidiClipDocument::publish()
         return a.id < b.id;
     });
     s->articulations = articulations;
-    snapshot.store (std::move (s));
+    {
+        const juce::SpinLock::ScopedLockType sl (snapshotLock);
+        snapshot = std::move (s);
+    }
 }
 
 //==============================================================================

@@ -106,8 +106,16 @@ class MidiClipDocument
 public:
     MidiClipDocument() = default;
 
-    std::shared_ptr<const DocumentSnapshot> getSnapshot() const { return snapshot.load(); }
-    juce::uint64 getRevision() const { return snapshot.load()->revision; }
+    std::shared_ptr<const DocumentSnapshot> getSnapshot() const
+    {
+        const juce::SpinLock::ScopedLockType sl (snapshotLock);
+        return snapshot;
+    }
+    juce::uint64 getRevision() const
+    {
+        const juce::SpinLock::ScopedLockType sl (snapshotLock);
+        return snapshot->revision;
+    }
 
     // -- mutations (message thread only) -----------------------------------
     void beginTransaction (juce::String name);
@@ -177,9 +185,11 @@ private:
     std::vector<Op> pendingTransaction;
     size_t undoIndex = 0;
 
-    std::atomic<std::shared_ptr<const DocumentSnapshot>> snapshot {
-        std::make_shared<const DocumentSnapshot>()
-    };
+    // Cross-platform snapshot slot: std::atomic<shared_ptr> is unavailable in
+    // AppleClang libc++, so guard a plain shared_ptr with a spinlock. Writers
+    // are rare (message-thread edits); readers only copy the pointer.
+    mutable juce::SpinLock snapshotLock;
+    std::shared_ptr<const DocumentSnapshot> snapshot { std::make_shared<const DocumentSnapshot>() };
 
     JUCE_DECLARE_NON_COPYABLE (MidiClipDocument)
 };
