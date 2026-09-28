@@ -806,3 +806,61 @@ body {
 /* chord lane hover cursors (same treatment as note hover) */
 .roll-chords[data-hcursor='resize'] { cursor: ew-resize; }
 .roll-chords[data-hcursor='move'] { cursor: move; }
+
+/* ---- drum map editor (PowerDrumMapper-style) ---------------------------- */
+.drummap-modal {
+  width: 720px; max-width: calc(100vw - 48px);
+  height: min(80vh, 640px);
+  padding: 0;
+}
+.drummap-modal .modal-head { padding: 14px 16px 10px 16px; }
+.drummap-modal .modal-head strong { font-size: 14px; }
+.dm-badges { display: flex; gap: 10px; margin-right: 8px; }
+.dm-badge {
+  display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15;
+}
+.dm-badge-num { font-size: 16px; font-weight: 700; color: var(--accent); }
+.dm-badge-cap { font-size: 9px; color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase; }
+.dm-table-wrap { flex: 1; overflow: auto; padding: 0 16px; }
+.dm-table { width: 100%; border-collapse: collapse; }
+.dm-table th {
+  text-align: left; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-faint); font-weight: 500; padding: 4px 6px 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dm-table td { padding: 3px 6px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+.dm-table tr:hover td { background: color-mix(in srgb, var(--btn-hover) 60%, transparent); }
+.dm-name {
+  width: 100%; height: 26px; background: transparent; color: var(--text);
+  border: 1px solid transparent; border-radius: 5px;
+  font-family: inherit; font-size: 12px; padding: 0 6px; outline: none;
+}
+.dm-name:hover { border-color: var(--border); }
+.dm-name:focus { border-color: var(--accent); background: var(--bg-panel2); }
+.dm-select {
+  height: 26px; background: var(--bg-panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+  font-family: inherit; font-size: 12px; padding: 0 4px; outline: none; cursor: pointer;
+}
+.dm-select:focus { border-color: var(--accent); }
+.dm-ch { min-width: 64px; }
+.dm-del { text-align: right; }
+.dm-del .mini-btn { opacity: 0.5; }
+.dm-table tr:hover .dm-del .mini-btn { opacity: 1; }
+.dm-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-top: 1px solid var(--border);
+}
+.dm-foot-btn {
+  height: 28px; padding: 0 12px; border-radius: 6px;
+  background: var(--bg-panel2); color: var(--text);
+  border: 1px solid var(--border); cursor: pointer;
+  font-family: inherit; font-size: 12px;
+}
+.dm-foot-btn:hover { background: var(--btn-hover); }
+.dm-count { font-size: 11px; color: var(--text-faint); margin-left: 4px; }
+.dm-add {
+  height: 28px; padding: 0 14px; border-radius: 6px; border: none; cursor: pointer;
+  background: var(--accent); color: #fff; font-family: inherit; font-size: 12px; font-weight: 600;
+}
+.dm-add:hover { filter: brightness(1.1); }

@@ -66,6 +66,10 @@ export function Toolbar(): React.ReactElement {
     if (entries.length > 0) setDrumDraft(entries.map((e) => ({ ...e })));
   }, [drumMapEditorOpen, drumMap]);
 
+  const noteOpts = Array.from({ length: 128 }, (_, n) => ({ n, label: `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1} (${n})` }));
+  const chOpts = [{ c: 0, label: 'ALL' }, ...Array.from({ length: 16 }, (_, k) => ({ c: k + 1, label: String(k + 1) }))];
+  const chLabel = (c: number) => (c === 0 ? 'ALL' : String(c));
+
   const openDrumMapEditor = () => {
     const entries = useStore.getState().drumMap.entries ?? [];
     setDrumDraft(entries.length > 0 ? entries.map((e) => ({ ...e })) : [{ i: 36, o: 36, c: 0, name: '' }]);
@@ -78,7 +82,7 @@ export function Toolbar(): React.ReactElement {
     const st = useStore.getState();
     st.editDoc === undefined; // noop guard
     void getBridge().invoke('drummap.set', { name: drumMapName || 'Custom', entries: clean }).then(() => {
-      setHint(t('lane.hintLyric') === '' ? '' : `鼓组映射已应用（${clean.length} 条）`);
+      setHint(`鼓组映射已应用（${clean.length} 条）`);
     }).catch(() => setHint('映射应用失败'));
     setDrumMapEditorOpen(false);
   };
@@ -376,71 +380,93 @@ export function Toolbar(): React.ReactElement {
           <div className="modal drummap-modal">
             <div className="modal-head">
               <strong>{t('tb.drumMapEditor')}</strong>
+              <span className="foot-spring" />
+              <div className="dm-badges">
+                <div className="dm-badge">
+                  <span className="dm-badge-num">{drumDraft.length}</span>
+                  <span className="dm-badge-cap">RULES</span>
+                </div>
+                <div className="dm-badge">
+                  <span className="dm-badge-cap">UNMATCHED</span>
+                  <span className="dm-badge-cap">pass through</span>
+                </div>
+              </div>
               <button className="tb-btn" onClick={() => setDrumMapEditorOpen(false)} title={t('set.close')}>✕</button>
             </div>
-            <div className="modal-body">
-              <div className="drummap-toolbar">
-                <button className="mini-btn" onClick={() => {
-                  void getBridge().invoke('drummap.load').then(() => {
-                    const st = useStore.getState();
-                    setDrumDraft((st.drumMap.entries ?? []).map((e) => ({ ...e })));
-                    setHint(`已导入: ${st.drumMap.name}`);
-                  }).catch(() => {});
-                }}>{t('exp.importJson')}</button>
-                <button className="mini-btn" onClick={() => {
-                  void getBridge().invoke('drummap.export', {
-                    name: drumMapName || 'Custom',
-                    entries: drumDraft.filter((r) => r.name.trim() !== ''),
-                  }).then(() => setHint('已导出 .bwdrm')).catch(() => setHint('导出失败'));
-                }}>{t('exp.exportJson')}</button>
-                <button className="mini-btn" onClick={() => {
-                  void getBridge().invoke('drummap.clear').then(() => {
-                    setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
-                    setHint('已清除鼓组映射（恢复 GM 名称）');
-                  }).catch(() => {});
-                }}>清除</button>
-                <span className="foot-spring" />
-                <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
-                  + 添加
-                </button>
-              </div>
-              <table className="shortcut-table">
+            <div className="modal-body dm-table-wrap">
+              <table className="dm-table">
                 <thead>
                   <tr>
-                    <td style={{ width: '30%' }}>{t('exp.name')}</td>
-                    <td style={{ width: '34%' }}>In / Out / Ch</td>
-                    <td></td>
+                    <th>NAME</th>
+                    <th>SOURCE NOTE</th>
+                    <th>SRC CH</th>
+                    <th>TARGET NOTE</th>
+                    <th>TGT CH</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {drumDraft.map((r: { i: number; o: number; c: number; name: string }, i: number) => (
+                  {drumDraft.map((r, i) => (
                     <tr key={i}>
+                      <td><input className="dm-name" value={r.name}
+                        onChange={(e) => setDrumDraft((d) => d.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} /></td>
                       <td>
-                        <input className="lane-cc-input" value={r.name}
-                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, name: e.target.value } : x))} />
+                        <select className="dm-select" value={String(r.i)}
+                          onChange={(e) => setDrumDraft((d) => d.map((x, j) => j === i ? { ...x, i: Number(e.target.value) } : x))}>
+                          {noteOpts.map((o) => <option key={o.n} value={String(o.n)}>{o.label}</option>)}
+                        </select>
                       </td>
-                      <td style={{ display: 'flex', gap: 4 }}>
-                        <input className="lane-cc-input" type="number" min={0} max={127} title="输入键位（钢琴窗绘制的音高）" value={r.i}
-                          style={{ width: 56 }}
-                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, i: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
-                        <input className="lane-cc-input" type="number" min={0} max={127} title="输出键位（下游收到的音高）" value={r.o}
-                          style={{ width: 56 }}
-                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, o: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
-                        <input className="lane-cc-input" type="number" min={0} max={16} title="通道（0 = 保持原通道）" value={r.c}
-                          style={{ width: 44 }}
-                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, c: Math.min(16, Math.max(0, Number(e.target.value) || 0)) } : x))} />
+                      <td>
+                        <select className="dm-select dm-ch" value={String(r.c)}
+                          onChange={(e) => setDrumDraft((d) => d.map((x, j) => j === i ? { ...x, c: Number(e.target.value) } : x))}>
+                          {chOpts.map((o) => <option key={o.c} value={String(o.c)}>{o.label}</option>)}
+                        </select>
                       </td>
-                      <td className="sc-actions">
-                        <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.filter((_: { i: number; o: number; c: number; name: string }, j: number) => j !== i))}>{t('exp.delete')}</button>
+                      <td>
+                        <select className="dm-select" value={String(r.o)}
+                          onChange={(e) => setDrumDraft((d) => d.map((x, j) => j === i ? { ...x, o: Number(e.target.value) } : x))}>
+                          {noteOpts.map((o) => <option key={o.n} value={String(o.n)}>{o.label}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <select className="dm-select dm-ch" value={String(r.c)}
+                          onChange={(e) => setDrumDraft((d) => d.map((x, j) => j === i ? { ...x, c: Number(e.target.value) } : x))}>
+                          {chOpts.map((o) => <option key={o.c} value={String(o.c)}>{o.label}</option>)}
+                        </select>
+                      </td>
+                      <td className="dm-del">
+                        <button className="mini-btn" onClick={() => setDrumDraft((d) => d.filter((_, j) => j !== i))}>✕</button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="modal-foot">
-              <button className="mini-btn" onClick={() => setDrumMapEditorOpen(false)}>{t('lane.cancel')}</button>
-              <button className="mini-btn primary" onClick={applyDrumDraft}>{t('set.done')}</button>
+            <div className="dm-foot">
+              <button className="dm-foot-btn" onClick={() => {
+                void getBridge().invoke('drummap.load').then(() => {
+                  const st = useStore.getState();
+                  setDrumDraft((st.drumMap.entries ?? []).map((e) => ({ ...e })));
+                  setHint(`已导入: ${st.drumMap.name}`);
+                }).catch(() => {});
+              }}>Import…</button>
+              <button className="dm-foot-btn" onClick={() => {
+                void getBridge().invoke('drummap.export', {
+                  name: drumMapName || 'Custom',
+                  entries: drumDraft.filter((r) => r.name.trim() !== ''),
+                }).then(() => setHint('已导出 .bwdrm')).catch(() => setHint('导出失败'));
+              }}>Export…</button>
+              <span className="dm-count">{drumDraft.length} rules</span>
+              <span className="foot-spring" />
+              <button className="dm-foot-btn" onClick={() => {
+                void getBridge().invoke('drummap.clear').then(() => {
+                  setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
+                  setHint('已清除鼓组映射（恢复 GM 名称）');
+                }).catch(() => {});
+              }}>Clear</button>
+              <button className="dm-add" onClick={() => setDrumDraft((d) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
+                + Add
+              </button>
             </div>
           </div>
         </div>

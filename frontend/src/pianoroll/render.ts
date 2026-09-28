@@ -120,6 +120,10 @@ export function setCustomDrumNames(names: Record<number, string> | null): void {
   customDrumNames = names;
 }
 
+export function noteName(pitch: number): string {
+  return `${NOTE_NAMES[pitch % 12]}${Math.floor(pitch / 12) - 1}`;
+}
+
 export function drumName(pitch: number): string {
   if (customDrumNames && customDrumNames[pitch]) return customDrumNames[pitch];
   return GM_DRUMS[pitch] ?? '';
