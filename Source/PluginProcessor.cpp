@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "FileIO/DrumMapIO.h"
 
 namespace pme
 {
@@ -23,6 +24,19 @@ PowerMidiEditorAudioProcessor::PowerMidiEditorAudioProcessor()
     // A fresh instance starts empty — the demo content is for the browser dev
     // mock only, not for real sessions.
     loadUiPrefs();
+    if (auto* o = uiPrefsFile().existsAsFile()
+            ? juce::JSON::parse (uiPrefsFile().loadFileAsString()).getDynamicObject()
+            : nullptr)
+    {
+        if (auto* dm = o->getProperty ("drumMap").getDynamicObject())
+        {
+            drumMap.mapName = dm->getProperty ("drumMapName").toString();
+            if (auto* arr = dm->getProperty ("drumMapEntries").getArray())
+                for (const auto& v : *arr)
+                    if (auto* eo = v.getDynamicObject())
+                        drumMap.entries.push_back ({ (int) eo->getProperty ("n"), eo->getProperty ("name").toString() });
+        }
+    }
 }
 
 void PowerMidiEditorAudioProcessor::addDemoContent()
@@ -433,6 +447,48 @@ juce::String PowerMidiEditorAudioProcessor::toggleAb()
     if (! abSlots[abActive].isVoid())
         document.loadFromVar (abSlots[abActive]);
     return abActive == 0 ? "A" : "B";
+}
+
+//==============================================================================
+// Drum kit name map: parsed once on load, pushed to the UI, and persisted in
+// ui_prefs.json so the kit labels survive across instances/sessions.
+void PowerMidiEditorAudioProcessor::loadDrumMapFile (const juce::File& file)
+{
+    DrumMapData data;
+    if (! DrumMapIO::parse (file, data))
+        return;
+    drumMap = data;
+
+    // persist for future instances
+    auto o = new juce::DynamicObject();
+    o->setProperty ("drumMapName", drumMap.mapName);
+    juce::Array<juce::var> arr;
+    for (const auto& e : drumMap.entries)
+    {
+        auto eo = new juce::DynamicObject();
+        eo->setProperty ("n", e.note);
+        eo->setProperty ("name", e.name);
+        arr.add (juce::var (eo));
+    }
+    o->setProperty ("drumMapEntries", arr);
+    auto prefs = juce::var (o);
+
+    const auto pf = uiPrefsFile();
+    auto existing = juce::JSON::parse (pf.existsAsFile() ? pf.loadFileAsString() : juce::String());
+    if (auto* po = existing.getDynamicObject())
+        po->setProperty ("drumMap", prefs);
+    pf.getParentDirectory().createDirectory();
+    pf.replaceWithText (juce::JSON::toString (existing, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
+}
+
+void PowerMidiEditorAudioProcessor::clearDrumMap()
+{
+    drumMap = {};
+    const auto pf = uiPrefsFile();
+    auto existing = juce::JSON::parse (pf.existsAsFile() ? pf.loadFileAsString() : juce::String());
+    if (auto* po = existing.getDynamicObject())
+        po->removeProperty ("drumMap");
+    pf.replaceWithText (juce::JSON::toString (existing, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
 }
 
 //==============================================================================

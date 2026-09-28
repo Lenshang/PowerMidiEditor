@@ -113,7 +113,15 @@ const GM_DRUMS: Record<number, string> = {
   56: 'Cowbell', 57: 'Crash2', 59: 'Ride2',
 };
 
+let customDrumNames: Record<number, string> | null = null;
+
+/** Install a loaded drum kit name map (from a .bwdrm/.drm file). */
+export function setCustomDrumNames(names: Record<number, string> | null): void {
+  customDrumNames = names;
+}
+
 export function drumName(pitch: number): string {
+  if (customDrumNames && customDrumNames[pitch]) return customDrumNames[pitch];
   return GM_DRUMS[pitch] ?? '';
 }
 
@@ -303,17 +311,37 @@ function drawNote(
   ctx.fillStyle = selected ? c['note-selected'] : c['note-fill'];
 
   if (drumMode) {
-    const dw = Math.min(w, h * 1.6);
-    ctx.beginPath();
-    ctx.moveTo(x + dw / 2, y);
-    ctx.lineTo(x + dw, y + h / 2);
-    ctx.lineTo(x + dw / 2, y + h);
-    ctx.lineTo(x, y + h / 2);
-    ctx.closePath();
+    // Fixed-shape marker: a rounded square rotated 45°, anchored at the
+    // note-on point. Size tracks row height only — never stretched by
+    // horizontal zoom, so hits stay recognizable at any zoom level.
+    const sel = selected;
+    const size = Math.max(6, Math.min(v.rowHeight * 0.62, 22));
+    const cxp = x + 0.5; // anchor exactly on the note-on (== gridline raster position)
+    const cyp = y + h / 2;
+    ctx.save();
+    ctx.translate(cxp, cyp);
+    ctx.rotate(Math.PI / 4);
+    const half = size / 2;
+    const rr = Math.min(3, half / 2);
+    ctx.globalAlpha = n.m ? 0.35 : alpha;
+    ctx.fillStyle = sel ? c['note-selected'] : c['note-fill'];
+    roundedRect(ctx, -half, -half, size, size, rr);
     ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = selected ? c['note-selected-border'] : c['note-border'];
+    ctx.strokeStyle = sel ? c['note-selected-border'] : c['note-border'];
+    ctx.lineWidth = 1;
+    roundedRect(ctx, -half + 0.5, -half + 0.5, size - 1, size - 1, rr);
     ctx.stroke();
+    // inner dot for a subtle "hit" look
+    if (!n.m) {
+      ctx.fillStyle = c['note-text'];
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(1, size / 8), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
     return;
   }
 
@@ -411,6 +439,7 @@ export interface OverlayState {
   stepCursorPpq: number | null;
   razorHoverPpq: number | null;
   createGhost?: { p: number; s: number; l: number } | null;
+  drumMode?: boolean;
 }
 
 export function drawOverlay(
@@ -473,21 +502,45 @@ export function drawOverlay(
   }
 
   // pencil/spray creation ghost: the exact note (snap + chord assist applied)
-  // the next click would create, drawn as a translucent dashed note
+  // the next click would create. Drum mode previews the same fixed marker
+  // the real hit will use; other modes draw a translucent dashed note.
   if (st.createGhost && st.createGhost.l > 0) {
     const g = st.createGhost;
     const gx = xOfPpq(v, g.s);
     const gy = (127 - g.p) * v.rowHeight - v.scrollYPx;
-    const gw = Math.max(4, g.l * v.pxPerPpq - 1);
-    ctx.fillStyle = c['note-fill'];
-    ctx.globalAlpha = 0.30;
-    ctx.fillRect(gx, gy, gw, v.rowHeight - 1);
-    ctx.globalAlpha = 0.9;
-    ctx.strokeStyle = c['note-fill'];
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(gx + 0.5, gy + 0.5, gw - 1, v.rowHeight - 2);
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
+    if (st.drumMode) {
+      const size = Math.max(6, Math.min(v.rowHeight * 0.62, 22));
+      const cxp = gx + 0.5;
+      const cyp = gy + v.rowHeight / 2;
+      ctx.save();
+      ctx.translate(cxp, cyp);
+      ctx.rotate(Math.PI / 4);
+      const half = size / 2;
+      const rr = Math.min(3, half / 2);
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = c['note-fill'];
+      roundedRect(ctx, -half, -half, size, size, rr);
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = c['note-fill'];
+      ctx.setLineDash([4, 3]);
+      roundedRect(ctx, -half + 0.5, -half + 0.5, size - 1, size - 1, rr);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else {
+      const gw = Math.max(4, g.l * v.pxPerPpq - 1);
+      ctx.fillStyle = c['note-fill'];
+      ctx.globalAlpha = 0.30;
+      ctx.fillRect(gx, gy, gw, v.rowHeight - 1);
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = c['note-fill'];
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(gx + 0.5, gy + 0.5, gw - 1, v.rowHeight - 2);
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
   }
 
   if (st.playheadPpq != null) {

@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Model/MidiClipDocument.h"
+#include "FileIO/DrumMapIO.h"
 #include "Playback/PlaybackEngine.h"
 #include "PluginSettings.h"
 
@@ -74,6 +75,11 @@ public:
     // and the internal play button are all audible without a host instrument.
     void previewSynthEvent (const juce::MidiMessage& m);
     void renderPreviewSynth (juce::AudioBuffer<float>& buffer);
+
+    // -- drum kit name map (drum mode keyboard labels) -----------------------
+    DrumMapData drumMap;
+    void loadDrumMapFile (const juce::File& file);
+    void clearDrumMap();
 
     // -- internal transport (the UI's play button) ---------------------------
     void startInternalPlayback (double startPpq) { engine.startInternal (startPpq); }

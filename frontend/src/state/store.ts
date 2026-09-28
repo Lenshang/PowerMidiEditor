@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import type {
   ControllerEvent,
   DocumentState,
+  DrumMapState,
   EditOp,
   Note,
   PitchBendEvent,
@@ -64,6 +65,7 @@ interface StoreState {
   version: string;
   doc: DocumentState;
   settings: SettingsState;
+  drumMap: DrumMapState;
   transport: TransportState;
   view: ViewState;
   selection: number[];
@@ -168,6 +170,7 @@ export const useStore = create<StoreState>((set, get) => ({
     snapBypass: 'shift',
     lang: 'en',
   },
+  drumMap: { name: '', entries: [] as Array<{ n: number; name: string }> } as import('../bridge/protocol').DrumMapState,
   transport: emptyTransport,
   view: {
     pxPerPpq: 2, rowHeight: 16, scrollXPpq: 0, scrollYPx: (127 - 76) * 16,
@@ -230,6 +233,9 @@ export const useStore = create<StoreState>((set, get) => ({
         set({ doc: d, ccNumber, chordSelection, pendingChordSelect: false });
         break;
       }
+      case 'drummap':
+        set({ drumMap: e.map });
+        break;
       case 'settings':
         set({ settings: e.settings });
         break;
@@ -383,6 +389,17 @@ export const useStore = create<StoreState>((set, get) => ({
 /** Effective grid step in quarter notes (triplets shrink the step). */
 export function gridStepPpq(s: SettingsState): number {
   return s.triplet ? s.gridPpq * (2 / 3) : s.gridPpq;
+}
+
+/**
+ * Snap tuned for drum hits: the drawn marker is a point anchored AT its
+ * start, so round to the NEAREST grid point — a cursor anywhere within the
+ * second half of a cell captures the point to its right. Drum mode only.
+ */
+export function snapPpqDrum(t: number, s: SettingsState): number {
+  if (!s.snap) return t;
+  const step = gridStepPpq(s);
+  return Math.round(t / step) * step;
 }
 
 export function snapPpq(t: number, s: SettingsState, mode: 'floor' | 'round' = 'floor'): number {

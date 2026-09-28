@@ -52,6 +52,8 @@ export function Toolbar(): React.ReactElement {
   const selection = useStore((s) => s.selection);
   const editCursorPpq = useStore((s) => s.editCursorPpq);
   const chordAssist = useStore((s) => s.chordAssist);
+  const drumMapName = useStore((s) => s.drumMap.name);
+  const drumModeActive = useStore((s) => s.drumMode);
   const toggleChordAssist = useStore((s) => s.toggleChordAssist);
   const updateChord = (patch: { r?: number; q?: number }) => {
     const st = useStore.getState();
@@ -192,6 +194,22 @@ export function Toolbar(): React.ReactElement {
       <button className={`tb-btn ${drumMode ? 'active' : ''}`} title={t('tb.drumTitle')} onClick={toggleDrumMode}>
         <span className="tb-text">{t('tb.drum')}</span>
       </button>
+      {drumModeActive && (
+        <>
+          <button className="tb-btn" title={drumMapName ? `鼓组映射: ${drumMapName} — 点击加载 .bwdrm/.drm` : '加载 .bwdrm/.drm 鼓组映射'}
+            onClick={() => {
+              void getBridge().invoke('drummap.load').catch(() => {});
+            }}>
+            <span className="tb-text">{drumMapName ? drumMapName.slice(0, 8) : '映射'}</span>
+          </button>
+          {drumMapName && (
+            <button className="tb-btn" title="清除鼓组映射（恢复 GM 名称）"
+              onClick={() => { void getBridge().invoke('drummap.clear').catch(() => {}); }}>
+              <span className="tb-text">✕</span>
+            </button>
+          )}
+        </>
+      )}
       <button className={`tb-btn ${chordAssist ? 'active' : ''}`} title={t('tb.chordAssistTitle')} onClick={toggleChordAssist}>
         <span className="tb-text">{t('tb.chordAssist')}</span>
       </button>
@@ -265,6 +283,7 @@ export function Toolbar(): React.ReactElement {
               const v = Number(e.target.value);
               const st = useStore.getState();
               st.setActiveArticulation(v >= 0 ? v : null);
+              (e.target as HTMLSelectElement).blur(); // Space must reach the roll, not reopen this dropdown
               // with a selection, the switch retags the selected notes too
               if (st.selection.length > 0) {
                 const ops: EditOp[] = st.selection.map((id) => ({ op: 'update', note: { id, a: v >= 0 ? v : -1 } }));

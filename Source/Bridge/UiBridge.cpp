@@ -1,5 +1,6 @@
 #include "UiBridge.h"
 #include "../FileIO/ExpressionMapIO.h"
+#include "../FileIO/DrumMapIO.h"
 #include "../Util/VarUtil.h"
 #include "../FileIO/MidiFileIO.h"
 #include <BinaryData.h>
@@ -218,7 +219,7 @@ juce::var artsToVar (const std::vector<ArticulationDef>& arts)
         o->setProperty ("v", a.ccValue);
         arr.add (juce::var (o));
     }
-    return juce::var (arr);
+    return arr;
 }
 
 juce::var okResult (const juce::var& data)
@@ -601,6 +602,39 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         return okResult (juce::var (true));
     }
 
+    if (name == "drummap.load")
+    {
+        auto chooser = std::make_unique<juce::FileChooser> ("Load drum map",
+            juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+            "*.bwdrm;*.drm");
+        auto* raw = chooser.get();
+        pendingChoosers.push_back (std::move (chooser));
+        raw->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this, raw] (const juce::FileChooser& fc)
+            {
+                auto file = fc.getResult();
+                if (file != juce::File{})
+                {
+                    processor.loadDrumMapFile (file);
+                    if (! processor.drumMap.entries.empty())
+                        pushToastKey ("toast.drumMapLoaded", {{ "name", processor.drumMap.mapName }});
+                    else
+                        pushToastKey ("toast.drumMapFailed");
+                    pushDrumMap();
+                }
+                for (auto it = pendingChoosers.begin(); it != pendingChoosers.end(); ++it)
+                    if (it->get() == raw) { pendingChoosers.erase (it); break; }
+            });
+        return okResult (juce::var (true));
+    }
+
+    if (name == "drummap.clear")
+    {
+        processor.clearDrumMap();
+        pushDrumMap();
+        return okResult (juce::var (true));
+    }
+
     if (name == "record.set")
     {
         auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
@@ -915,6 +949,22 @@ void UiBridge::pushToastKey (const juce::String& key,
     }
     o->setProperty ("params", arr);
     push ("toast", juce::var (o));
+}
+
+void UiBridge::pushDrumMap()
+{
+    auto o = new juce::DynamicObject();
+    o->setProperty ("name", processor.drumMap.mapName);
+    juce::Array<juce::var> arr;
+    for (const auto& e : processor.drumMap.entries)
+    {
+        auto eo = new juce::DynamicObject();
+        eo->setProperty ("n", e.note);
+        eo->setProperty ("name", e.name);
+        arr.add (juce::var (eo));
+    }
+    o->setProperty ("entries", arr);
+    push ("drummap", juce::var (o));
 }
 
 void UiBridge::pushDoc()

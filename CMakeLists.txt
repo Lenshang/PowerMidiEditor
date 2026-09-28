@@ -111,7 +111,8 @@ target_sources(PowerMidiEditor PRIVATE
     Source/Model/MidiClipDocument.cpp
     Source/Playback/PlaybackEngine.cpp
     Source/FileIO/MidiFileIO.cpp
-    Source/FileIO/ExpressionMapIO.cpp)
+    Source/FileIO/ExpressionMapIO.cpp
+    Source/FileIO/DrumMapIO.cpp)
 
 target_include_directories(PowerMidiEditor PRIVATE
     "${CMAKE_BINARY_DIR}/juce_binarydata_PMEAssets/JuceLibraryCode")
@@ -149,7 +150,8 @@ if(PME_BUILD_TESTS)
         Source/Model/MidiClipDocument.cpp
         Source/Playback/PlaybackEngine.cpp
         Source/FileIO/MidiFileIO.cpp
-        Source/FileIO/ExpressionMapIO.cpp)
+        Source/FileIO/ExpressionMapIO.cpp
+        Source/FileIO/DrumMapIO.cpp)
     target_compile_definitions(PmeTests PRIVATE
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0)

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { MidiInEvent, Note } from '../bridge/protocol';
-import { gridStepPpq, midiBus, snapPpq, transportClock, useStore } from '../state/store';
+import { gridStepPpq, midiBus, snapPpq, snapPpqDrum, transportClock, useStore } from '../state/store';
 import { runAction } from '../state/dispatch';
 import type { EditOp } from '../bridge/protocol';
 import { t } from '../i18n';
@@ -10,6 +10,7 @@ import { themeColors } from '../ui/themes';
 import {
   chordPcsAt, drawChordLane, drawGridLines, drawKeys, drawMinimap, drawNotes, drawOverlay,
   drawRollBackground, drawRuler,
+  setCustomDrumNames,
 } from './render';
 import {
   KEYS_WIDTH, ppqAtX, RULER_HEIGHT, barPpqOf, xOfPpq, pitchAtY, floatPitchAtY,
@@ -90,6 +91,14 @@ export function PianoRoll(): React.ReactElement {
   const miniDragRef = useRef(false);
   const miniRef = useRef<HTMLCanvasElement>(null);
   const contentEndRef = useRef(32);
+  const drumMap = useStore((st) => st.drumMap);
+  useEffect(() => {
+    const names: Record<number, string> = {};
+    for (const e of drumMap.entries) names[e.n] = e.name;
+    setCustomDrumNames(drumMap.entries.length > 0 ? names : null);
+    draw();
+  }, [drumMap]);
+
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; ppq: number; noteId: number | null } | null>(null);
   const [lyricFromModal, setLyricFromModal] = useState<number | null>(null);
   const [lyricFromText, setLyricFromText] = useState('');
@@ -259,6 +268,7 @@ export function PianoRoll(): React.ReactElement {
           stepCursorPpq: st.activeTool === 'step' ? st.editCursorPpq : null,
           razorHoverPpq: st.activeTool === 'razor' ? razorHoverRef.current : null,
           createGhost: (st.activeTool === 'pencil' || st.activeTool === 'spray') && !dragRef.current ? ghostRef.current : null,
+          drumMode: st.drumMode,
         });
         if (st.activeTool !== 'pencil' && st.activeTool !== 'spray') ghostRef.current = null;
       } catch (e) {
@@ -465,7 +475,9 @@ export function PianoRoll(): React.ReactElement {
           && Math.abs(y - lastEmptyClick.current.y) < 5;
         lastEmptyClick.current = { t: now, x, y };
         if (isDbl) {
-          const drawS = snapPpq(ppq, st.settings, 'floor');
+          const drawS = st.drumMode
+            ? snapPpqDrum(ppq, st.settings)
+            : snapPpq(ppq, st.settings, 'floor');
           const dblP = assistPitch(pitch, drawS);
           st.editDoc([{
             op: 'add',
@@ -507,7 +519,9 @@ export function PianoRoll(): React.ReactElement {
         const step = gridStepPpq(st.settings);
         const bypass = snapBypassed(e);
         const drag = makeDrag('draw', x, y);
-        const drawS = bypass ? ppq : snapPpq(ppq, st.settings, 'floor');
+        const drawS = st.drumMode && !bypass
+          ? snapPpqDrum(ppq, st.settings)
+          : bypass ? ppq : snapPpq(ppq, st.settings, 'floor');
         drag.newNotes = [{
           p: assistPitch(pitch, drawS), s: drawS,
           l: lastDrawLen.value, v: 0.8, m: false, c: 1, a: st.activeArticulation ?? -1,
@@ -525,7 +539,7 @@ export function PianoRoll(): React.ReactElement {
       case 'spray': {
         const step = gridStepPpq(st.settings);
         const drag = makeDrag('spray', x, y);
-        const cell = snapPpq(ppq, st.settings, 'floor');
+        const cell = st.drumMode && !snapBypassed(e) ? snapPpqDrum(ppq, st.settings) : snapPpq(ppq, st.settings, 'floor');
         const sprayP = assistPitch(pitch, cell);
         drag.newNotes = [{ p: sprayP, s: cell, l: step, v: 0.8, m: false, c: 1, a: st.activeArticulation ?? -1 }];
         void getBridge().invoke('preview.note', { p: sprayP, c: 1, v: 0.8 }).catch(() => {});
@@ -597,7 +611,10 @@ export function PianoRoll(): React.ReactElement {
     // creation ghost for pencil / spray: preview the exact note the next
     // click would draw (snap + chord assist applied), live under the cursor
     if (!drag && !marqueeRef.current && (st.activeTool === 'pencil' || st.activeTool === 'spray')) {
-      const gs = st.settings.snap && !snapBypassed(e) ? snapPpq(ppqAtX(v, x), st.settings, 'floor') : ppqAtX(v, x);
+      const drumSnap = st.drumMode;
+      const gs = !st.settings.snap || snapBypassed(e)
+        ? ppqAtX(v, x)
+        : drumSnap ? snapPpqDrum(ppqAtX(v, x), st.settings) : snapPpq(ppqAtX(v, x), st.settings, 'floor');
       const gl = st.activeTool === 'spray' ? gridStepPpq(st.settings) : lastDrawLen.value;
       ghostRef.current = { p: assistPitch(pitchAtY(v, y), gs), s: gs, l: gl };
     }
@@ -694,7 +711,7 @@ export function PianoRoll(): React.ReactElement {
         const step = gridStepPpq(st.settings);
         const rawPitch = pitchAtY(v, y);
         const pitch = assistPitch(rawPitch, snapPpq(ppqAtX(v, x), st.settings, 'floor'));
-        const cell = snapPpq(ppqAtX(v, x), st.settings, 'floor');
+        const cell = st.drumMode && !bypass ? snapPpqDrum(ppqAtX(v, x), st.settings) : snapPpq(ppqAtX(v, x), st.settings, 'floor');
         const from = Math.round((drag.lastSprayCell ?? cell) / step);
         const to = Math.round(cell / step);
         const dir = Math.sign(to - from);
@@ -865,6 +882,18 @@ export function PianoRoll(): React.ReactElement {
     setCtxMenu({ x, y, ppq: ppqAtX(useStore.getState().view, x), noteId: hit?.id ?? null });
   };
 
+  // position the context menu so it stays inside the roll view: flip up and
+  // clamp horizontally based on the measured size once rendered
+  const ctxMenuStyle = (x: number, y: number): React.CSSProperties => {
+    const vw = view.width ?? 800;
+    const vh = view.height ?? 400;
+    const estW = 190;
+    const estH = ctxMenu?.noteId != null ? 7 * 30 + 10 : 2 * 30 + 10;
+    const left = Math.max(4, Math.min(x, vw - estW - 4));
+    const top = y + estH > vh - 4 ? Math.max(4, y - estH) : y;
+    return { left, top };
+  };
+
   const ctxItems = (): Array<{ label: string; run: () => void }> => {
     const st = useStore.getState();
     if (ctxMenu?.noteId != null) {
@@ -928,7 +957,18 @@ export function PianoRoll(): React.ReactElement {
 
   const onChordPointerMove = (e: React.PointerEvent) => {
     const d = chordDragRef.current;
-    if (!d) return;
+    if (!d) {
+      // hover feedback: resize edge at the right of a chord block
+      const st = useStore.getState();
+      const x = chordRelative(e);
+      const hit = hitChord(x);
+      const el = chordWrapRef.current;
+      if (el) {
+        if (hit) el.dataset.hcursor = x >= xOfPpq(st.view, hit.s + hit.l) - 7 ? 'resize' : 'move';
+        else delete el.dataset.hcursor;
+      }
+      return;
+    }
     const st = useStore.getState();
     const x = chordRelative(e);
     const dPpq = (x - d.startX) / st.view.pxPerPpq;
@@ -1020,9 +1060,10 @@ export function PianoRoll(): React.ReactElement {
         <canvas ref={notesRef} className="roll-layer" />
         <canvas ref={overlayRef} className="roll-layer" />
         {ctxMenu && (
-          <div className="ctx-overlay" onPointerDown={() => setCtxMenu(null)}
+          <div className="ctx-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setCtxMenu(null); }}
             onContextMenu={(e) => e.preventDefault()}>
-            <div className="ctx-menu" style={{ left: Math.min(ctxMenu.x, (view.width ?? 800) - 150), top: ctxMenu.y }}>
+            <div className="ctx-menu" style={ctxMenuStyle(ctxMenu.x, ctxMenu.y)}
+              onPointerDown={(e) => e.stopPropagation()}>
               {ctxItems().map((item) => (
                 <button key={item.label} className="ctx-item"
                   onClick={() => { item.run(); setCtxMenu(null); }}>
@@ -1043,15 +1084,12 @@ export function PianoRoll(): React.ReactElement {
               <button className="tb-btn" onClick={() => setLyricFromModal(null)} title={t('lane.close')}>✕</button>
             </div>
             <div className="modal-body">
-              <input
-                className="lyric-batch-input"
+              <textarea
+                className="lyric-batch-input lyric-from-textarea"
                 autoFocus
                 placeholder={t('lane.lyricBatchHint')}
                 value={lyricFromText}
                 onChange={(e) => setLyricFromText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitLyricFrom();
-                }}
               />
               <div className="lyric-split" style={{ marginTop: 8 }}>
                 <button className={`mini-btn ${lyricFromSplit === 'space' ? 'active' : ''}`}

@@ -6,6 +6,7 @@
 #include "../Source/Playback/PlaybackEngine.h"
 #include "../Source/FileIO/MidiFileIO.h"
 #include "../Source/FileIO/ExpressionMapIO.h"
+#include "../Source/FileIO/DrumMapIO.h"
 
 using namespace pme;
 
@@ -296,6 +297,62 @@ static void testControllerAndPitchBend()
     doc.removePitchBends ({ snap->pbs[0].id });
     doc.commitTransaction();
     CHECK (doc.getSnapshot()->pbs.empty());
+}
+
+static void testDrumMapParse()
+{
+    DrumMapData data;
+
+    // Ample Sound .bwdrm CSV: Name,SourceNote,SourceChannel,TargetNote,TargetChannel
+    {
+        const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("PmeTests_test.bwdrm");
+        temp.replaceWithText ("Kick1,60,0,36,10\r\nSnare,62,0,38,10\r\n\r\nBroken Line\n", false);
+        CHECK (DrumMapIO::parse (temp, data));
+        CHECK (data.entries.size() == 4); // Kick1 (60+36), Snare (62+38)
+        CHECK (data.nameFor (60) == "Kick1");
+        CHECK (data.nameFor (36) == "Kick1");
+        CHECK (data.nameFor (62) == "Snare");
+        CHECK (data.nameFor (38) == "Snare");
+        CHECK (data.nameFor (40).isEmpty());
+        temp.deleteFile();
+    }
+
+    // Cubase .drm XML: INote -> ONote with Name
+    {
+        const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("PmeTests_test.drm");
+        temp.replaceWithText (
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+            "<DrumMap>\n"
+            "  <list name=\"Map\" type=\"list\">\n"
+            "    <item>\n"
+            "      <int name=\"INote\" value=\"36\"/>\n"
+            "      <int name=\"ONote\" value=\"36\"/>\n"
+            "      <string name=\"Name\" value=\"Kick\" wide=\"true\"/>\n"
+            "    </item>\n"
+            "    <item>\n"
+            "      <int name=\"INote\" value=\"38\"/>\n"
+            "      <int name=\"ONote\" value=\"40\"/>\n"
+            "      <string name=\"Name\" value=\"Snare\" wide=\"true\"/>\n"
+            "    </item>\n"
+            "  </list>\n"
+            "</DrumMap>\n", false);
+        CHECK (DrumMapIO::parse (temp, data));
+        CHECK (data.entries.size() >= 2);
+        CHECK (data.nameFor (36) == "Kick");
+        CHECK (data.nameFor (40) == "Snare" || data.nameFor (38) == "Snare");
+        temp.deleteFile();
+    }
+
+    // garbage rejected
+    {
+        const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("PmeTests_bad.bwdrm");
+        temp.replaceWithText ("no commas at all\n", false);
+        CHECK (! DrumMapIO::parse (temp, data));
+        temp.deleteFile();
+    }
 }
 
 static void testLyricRoundTrip()
@@ -681,6 +738,7 @@ int main()
     testInternalTransport();
     testExpressionMapImport();
     testLyricRoundTrip();
+    testDrumMapParse();
     testChordsAndArticulations();
     testMidiMemoryImport();
 

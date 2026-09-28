@@ -739,7 +739,7 @@ export function LanePanel(): React.ReactElement {
                 {ordered.map((n, idx) => {
                   const x = n.s * px;
                   if (x < vis0 * px - 160 || x > vis1 * px + 160) return null;
-                  const w = Math.max(56, Math.min(n.l * px - 4, 220));
+                  const w = Math.max(14, Math.min(n.l * px - 4, 220));
                   return (
                     <div key={n.id} className={`lyric-cell ${selection.includes(n.id) ? 'sel' : ''}`}
                       style={{ left: x, width: w }} title={`p=${n.p}`}>

@@ -33,6 +33,7 @@ private:
 
     void timerCallback() override;
     void pushDoc();
+    void pushDrumMap();
     void pushSettings();
     void pushTransport();
     void pushMidiIn();
