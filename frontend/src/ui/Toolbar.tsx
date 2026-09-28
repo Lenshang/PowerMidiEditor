@@ -386,22 +386,22 @@ export function Toolbar(): React.ReactElement {
                     setDrumDraft((st.drumMap.entries ?? []).map((e) => ({ ...e })));
                     setHint(`已导入: ${st.drumMap.name}`);
                   }).catch(() => {});
-                }}>{t('exp.import')}</button>
+                }}>{t('exp.importJson')}</button>
                 <button className="mini-btn" onClick={() => {
                   void getBridge().invoke('drummap.export', {
                     name: drumMapName || 'Custom',
                     entries: drumDraft.filter((r) => r.name.trim() !== ''),
                   }).then(() => setHint('已导出 .bwdrm')).catch(() => setHint('导出失败'));
-                }}>{t('exp.export')}</button>
+                }}>{t('exp.exportJson')}</button>
                 <button className="mini-btn" onClick={() => {
                   void getBridge().invoke('drummap.clear').then(() => {
                     setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
                     setHint('已清除鼓组映射（恢复 GM 名称）');
                   }).catch(() => {});
-                }}>{t('lane.clear')}</button>
+                }}>清除</button>
                 <span className="foot-spring" />
                 <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
-                  + {t('lane.addCc')}
+                  + 添加
                 </button>
               </div>
               <table className="shortcut-table">
