@@ -479,15 +479,6 @@ juce::String PowerMidiEditorAudioProcessor::toggleAb()
 //==============================================================================
 // Drum kit name map: parsed once on load, pushed to the UI, and persisted in
 // ui_prefs.json so the kit labels survive across instances/sessions.
-void PowerMidiEditorAudioProcessor::loadDrumMapFile (const juce::File& file)
-{
-    DrumMapData data;
-    if (! DrumMapIO::parse (file, data))
-        return;
-    drumMap = data;
-    saveDrumMapPrefs();
-}
-
 void PowerMidiEditorAudioProcessor::saveDrumMapPrefs() const
 {
     auto o = new juce::DynamicObject();

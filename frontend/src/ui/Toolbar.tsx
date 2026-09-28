@@ -57,6 +57,7 @@ export function Toolbar(): React.ReactElement {
   const drumMapName = useStore((s) => s.drumMap.name);
   const drumModeActive = useStore((s) => s.drumMode);
   const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
+  const [drumModalName, setDrumModalName] = useState('Custom');
   const [drumDraft, setDrumDraft] = useState<Array<{ i: number; o: number; c: number; name: string }>>([]);
   // while the editor is open, keep the draft in sync with the store — the
   // import file chooser completes asynchronously and lands via a drummap push
@@ -81,7 +82,7 @@ export function Toolbar(): React.ReactElement {
       .map((r) => ({ i: Math.round(r.i), o: Math.round(r.o), c: Math.round(r.c), name: r.name.trim() }));
     const st = useStore.getState();
     st.editDoc === undefined; // noop guard
-    void getBridge().invoke('drummap.set', { name: drumMapName || 'Custom', entries: clean }).then(() => {
+    void getBridge().invoke('drummap.set', { name: drumModalName || 'Custom', entries: clean }).then(() => {
       setHint(`鼓组映射已应用（${clean.length} 条）`);
     }).catch(() => setHint('映射应用失败'));
     setDrumMapEditorOpen(false);
@@ -444,11 +445,15 @@ export function Toolbar(): React.ReactElement {
             </div>
             <div className="dm-foot">
               <button className="dm-foot-btn" onClick={() => {
-                void getBridge().invoke('drummap.load').then(() => {
-                  const st = useStore.getState();
-                  setDrumDraft((st.drumMap.entries ?? []).map((e) => ({ ...e })));
-                  setHint(`已导入: ${st.drumMap.name}`);
-                }).catch(() => {});
+                const off = getBridge().onEvent((ev: unknown) => {
+                  const e = ev as { kind?: string; drummapDraft?: { name: string; entries: Array<{ i: number; o: number; c: number; name: string }> } };
+                  if (e.kind !== 'drummapDraft' || !e.drummapDraft) return;
+                  off();
+                  setDrumDraft(e.drummapDraft.entries.map((x) => ({ ...x })));
+                  setDrumModalName(e.drummapDraft.name || 'Custom');
+                  setHint(`已导入: ${e.drummapDraft.name}（确认后生效）`);
+                });
+                void getBridge().invoke('drummap.load').catch(() => off());
               }}>Import…</button>
               <button className="dm-foot-btn" onClick={() => {
                 void getBridge().invoke('drummap.export', {
@@ -459,10 +464,8 @@ export function Toolbar(): React.ReactElement {
               <span className="dm-count">{drumDraft.length} rules</span>
               <span className="foot-spring" />
               <button className="dm-foot-btn" onClick={() => {
-                void getBridge().invoke('drummap.clear').then(() => {
-                  setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
-                  setHint('已清除鼓组映射（恢复 GM 名称）');
-                }).catch(() => {});
+                setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
+                setDrumModalName('Custom');
               }}>Clear</button>
               <button className="dm-add" onClick={() => setDrumDraft((d) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
                 + Add

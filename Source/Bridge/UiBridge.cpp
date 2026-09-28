@@ -604,6 +604,8 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
 
     if (name == "drummap.load")
     {
+        // Parse only - the result lands as a drummapDraft event that fills the
+        // editor table; nothing takes effect until the user confirms.
         auto chooser = std::make_unique<juce::FileChooser> ("Load drum map",
             juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
             "*.bwdrm;*.drm");
@@ -615,19 +617,32 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
                 auto file = fc.getResult();
                 if (file != juce::File{})
                 {
-                    processor.loadDrumMapFile (file);
-                    if (! processor.drumMap.entries.empty())
-                        pushToastKey ("toast.drumMapLoaded", {{ "name", processor.drumMap.mapName }});
+                    DrumMapData data;
+                    if (DrumMapIO::parse (file, data))
+                    {
+                        auto o = new juce::DynamicObject();
+                        o->setProperty ("name", data.mapName);
+                        juce::Array<juce::var> arr;
+                        for (const auto& e : data.entries)
+                        {
+                            auto eo = new juce::DynamicObject();
+                            eo->setProperty ("i", e.inNote);
+                            eo->setProperty ("o", e.outNote);
+                            eo->setProperty ("c", e.channel);
+                            eo->setProperty ("name", e.name);
+                            arr.add (juce::var (eo));
+                        }
+                        o->setProperty ("entries", arr);
+                        push ("drummapDraft", juce::var (o));
+                    }
                     else
                         pushToastKey ("toast.drumMapFailed");
-                    pushDrumMap();
                 }
                 for (auto it = pendingChoosers.begin(); it != pendingChoosers.end(); ++it)
                     if (it->get() == raw) { pendingChoosers.erase (it); break; }
             });
         return okResult (juce::var (true));
     }
-
     if (name == "drummap.set")
     {
         auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
