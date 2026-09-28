@@ -434,7 +434,7 @@ body {
 .roll-corner { grid-column: 1; grid-row: 1; background: var(--ruler-bg); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .roll-ruler { grid-column: 2; grid-row: 1; width: 100%; height: 28px; display: block; border-bottom: 1px solid var(--border); cursor: pointer; }
 .roll-chords { grid-column: 2; grid-row: 2; position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
-.roll-keys { grid-column: 1; grid-row: 2 / span 3; width: 64px; height: 100%; display: block; border-right: 1px solid var(--border); cursor: pointer; }
+.roll-keys { grid-column: 1; grid-row: 3; width: 64px; height: 100%; display: block; border-right: 1px solid var(--border); cursor: pointer; }
 .roll-view { grid-column: 2; grid-row: 3; position: relative; overflow: hidden; min-width: 0; min-height: 0; }
 .roll-minimap { grid-column: 2; grid-row: 4; width: 100%; height: 24px; display: block; cursor: pointer; border-top: 1px solid var(--border); }
 
