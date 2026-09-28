@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { EditOp } from '../bridge/protocol';
 import { runAction } from '../state/dispatch';
@@ -54,6 +55,24 @@ export function Toolbar(): React.ReactElement {
   const chordAssist = useStore((s) => s.chordAssist);
   const drumMapName = useStore((s) => s.drumMap.name);
   const drumModeActive = useStore((s) => s.drumMode);
+  const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
+  const [drumDraft, setDrumDraft] = useState<Array<{ n: number; name: string }>>([]);
+  const openDrumMapEditor = () => {
+    const entries = useStore.getState().drumMap.entries ?? [];
+    setDrumDraft(entries.length > 0 ? entries.map((e) => ({ ...e })) : [{ n: 36, name: '' }]);
+    setDrumMapEditorOpen(true);
+  };
+  const applyDrumDraft = () => {
+    const clean = drumDraft
+      .filter((r) => r.name.trim() !== '' && Number.isFinite(r.n) && r.n >= 0 && r.n <= 127)
+      .map((r) => ({ n: Math.round(r.n), name: r.name.trim() }));
+    const st = useStore.getState();
+    st.editDoc === undefined; // noop guard
+    void getBridge().invoke('drummap.set', { name: drumMapName || 'Custom', entries: clean }).then(() => {
+      setHint(t('lane.hintLyric') === '' ? '' : `鼓组映射已应用（${clean.length} 条）`);
+    }).catch(() => setHint('映射应用失败'));
+    setDrumMapEditorOpen(false);
+  };
   const toggleChordAssist = useStore((s) => s.toggleChordAssist);
   const updateChord = (patch: { r?: number; q?: number }) => {
     const st = useStore.getState();
@@ -195,20 +214,10 @@ export function Toolbar(): React.ReactElement {
         <span className="tb-text">{t('tb.drum')}</span>
       </button>
       {drumModeActive && (
-        <>
-          <button className="tb-btn" title={drumMapName ? `鼓组映射: ${drumMapName} — 点击加载 .bwdrm/.drm` : '加载 .bwdrm/.drm 鼓组映射'}
-            onClick={() => {
-              void getBridge().invoke('drummap.load').catch(() => {});
-            }}>
-            <span className="tb-text">{drumMapName ? drumMapName.slice(0, 8) : '映射'}</span>
-          </button>
-          {drumMapName && (
-            <button className="tb-btn" title="清除鼓组映射（恢复 GM 名称）"
-              onClick={() => { void getBridge().invoke('drummap.clear').catch(() => {}); }}>
-              <span className="tb-text">✕</span>
-            </button>
-          )}
-        </>
+        <button className="tb-btn" title="鼓组映射编辑器：自定义各键位名称，支持 .bwdrm / .drm 导入导出"
+          onClick={openDrumMapEditor}>
+          <span className="tb-text">{drumMapName ? drumMapName.slice(0, 8) : t('tb.drumMap')}</span>
+        </button>
       )}
       <button className={`tb-btn ${chordAssist ? 'active' : ''}`} title={t('tb.chordAssistTitle')} onClick={toggleChordAssist}>
         <span className="tb-text">{t('tb.chordAssist')}</span>
@@ -348,9 +357,78 @@ export function Toolbar(): React.ReactElement {
       <button className="tb-btn" title={t('tb.expressionTitle')} onClick={() => openExpression(true)}>
         <span className="tb-text">{t('tb.expression')}</span>
       </button>
+      <div className="toolbar-sep" />
+
       <button className="tb-btn" title={t('tb.settingsTitle')} onClick={() => openSettings(true)}>
         <IconGear />
       </button>
+      {drumMapEditorOpen && (
+        <div className="modal-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setDrumMapEditorOpen(false); }}>
+          <div className="modal drummap-modal">
+            <div className="modal-head">
+              <strong>{t('tb.drumMapEditor')}</strong>
+              <button className="tb-btn" onClick={() => setDrumMapEditorOpen(false)} title={t('set.close')}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="drummap-toolbar">
+                <button className="mini-btn" onClick={() => {
+                  void getBridge().invoke('drummap.load').then(() => {
+                    const st = useStore.getState();
+                    setDrumDraft((st.drumMap.entries ?? []).map((e) => ({ ...e })));
+                    setHint(`已导入: ${st.drumMap.name}`);
+                  }).catch(() => {});
+                }}>{t('exp.import')}</button>
+                <button className="mini-btn" onClick={() => {
+                  void getBridge().invoke('drummap.export', {
+                    name: drumMapName || 'Custom',
+                    entries: drumDraft.filter((r) => r.name.trim() !== ''),
+                  }).then(() => setHint('已导出 .bwdrm')).catch(() => setHint('导出失败'));
+                }}>{t('exp.export')}</button>
+                <button className="mini-btn" onClick={() => {
+                  void getBridge().invoke('drummap.clear').then(() => {
+                    setDrumDraft([{ n: 36, name: '' }]);
+                    setHint('已清除鼓组映射（恢复 GM 名称）');
+                  }).catch(() => {});
+                }}>{t('lane.clear')}</button>
+                <span className="foot-spring" />
+                <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ n: number; name: string }>) => [...d, { n: 36, name: '' }])}>
+                  + {t('lane.addCc')}
+                </button>
+              </div>
+              <table className="shortcut-table">
+                <thead>
+                  <tr>
+                    <td style={{ width: '30%' }}>{t('exp.name')}</td>
+                    <td style={{ width: '20%' }}>Key</td>
+                    <td></td>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drumDraft.map((r: { n: number; name: string }, i: number) => (
+                    <tr key={i}>
+                      <td>
+                        <input className="lane-cc-input" value={r.name}
+                          onChange={(e) => setDrumDraft((d: Array<{ n: number; name: string }>) => d.map((x: { n: number; name: string }, j: number) => j === i ? { ...x, name: e.target.value } : x))} />
+                      </td>
+                      <td>
+                        <input className="lane-cc-input" type="number" min={0} max={127} value={r.n}
+                          onChange={(e) => setDrumDraft((d: Array<{ n: number; name: string }>) => d.map((x: { n: number; name: string }, j: number) => j === i ? { ...x, n: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
+                      </td>
+                      <td className="sc-actions">
+                        <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ n: number; name: string }>) => d.filter((_: { n: number; name: string }, j: number) => j !== i))}>{t('exp.delete')}</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="modal-foot">
+              <button className="mini-btn" onClick={() => setDrumMapEditorOpen(false)}>{t('lane.cancel')}</button>
+              <button className="mini-btn primary" onClick={applyDrumDraft}>{t('set.done')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

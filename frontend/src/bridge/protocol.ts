@@ -150,7 +150,7 @@ export type UiEvent =
   | { kind: 'settings'; settings: SettingsState }
   | { kind: 'transport'; transport: TransportState }
   | { kind: 'midi'; midi: MidiInEvent[] }
-  | { kind: 'drummap'; map: DrumMapState }
+  | { kind: 'drummap'; drummap: DrumMapState }
   | { kind: 'toast'; toast: string | { kind: 'toast'; key: string; params?: Array<{ k: string; v: string }> } };
 
 export type EditOp =

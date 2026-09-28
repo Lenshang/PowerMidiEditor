@@ -458,8 +458,11 @@ void PowerMidiEditorAudioProcessor::loadDrumMapFile (const juce::File& file)
     if (! DrumMapIO::parse (file, data))
         return;
     drumMap = data;
+    saveDrumMapPrefs();
+}
 
-    // persist for future instances
+void PowerMidiEditorAudioProcessor::saveDrumMapPrefs() const
+{
     auto o = new juce::DynamicObject();
     o->setProperty ("drumMapName", drumMap.mapName);
     juce::Array<juce::var> arr;

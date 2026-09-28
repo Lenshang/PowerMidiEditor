@@ -79,6 +79,7 @@ public:
     // -- drum kit name map (drum mode keyboard labels) -----------------------
     DrumMapData drumMap;
     void loadDrumMapFile (const juce::File& file);
+    void saveDrumMapPrefs() const;
     void clearDrumMap();
 
     // -- internal transport (the UI's play button) ---------------------------

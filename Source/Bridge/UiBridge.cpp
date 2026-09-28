@@ -628,6 +628,55 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         return okResult (juce::var (true));
     }
 
+    if (name == "drummap.set")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        if (payload != nullptr)
+        {
+            processor.drumMap.mapName = propStr (*payload, "name", "Custom");
+            processor.drumMap.entries.clear();
+            if (auto* arr = payload->getProperty ("entries").getArray())
+                for (const auto& v : *arr)
+                    if (auto* eo = v.getDynamicObject())
+                    {
+                        const int n = juce::jlimit (0, 127, (int) (double) eo->getProperty ("n"));
+                        const auto name = eo->getProperty ("name").toString().trim();
+                        if (name.isNotEmpty())
+                            processor.drumMap.entries.push_back ({ n, name });
+                    }
+            processor.saveDrumMapPrefs();
+            pushDrumMap();
+        }
+        return okResult (juce::var (true));
+    }
+
+    if (name == "drummap.export")
+    {
+        auto chooser = std::make_unique<juce::FileChooser> ("Export drum map (.bwdrm)",
+            juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+            "*.bwdrm");
+        auto* raw = chooser.get();
+        pendingChoosers.push_back (std::move (chooser));
+        raw->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+            [this, raw] (const juce::FileChooser& fc)
+            {
+                auto file = fc.getResult();
+                if (file != juce::File{})
+                {
+                    auto path = file.getParentDirectory().getChildFile (
+                        file.getFileNameWithoutExtension().upToLastOccurrenceOf (".", false, true) + ".bwdrm");
+                    juce::String csv;
+                    for (const auto& e : processor.drumMap.entries)
+                        csv << e.name << "," << e.note << ",0," << e.note << ",0" << "\r\n";
+                    path.replaceWithText (csv);
+                    pushToastKey ("toast.drumMapLoaded", {{ "name", path.getFileName() }});
+                }
+                for (auto it = pendingChoosers.begin(); it != pendingChoosers.end(); ++it)
+                    if (it->get() == raw) { pendingChoosers.erase (it); break; }
+            });
+        return okResult (juce::var (true));
+    }
+
     if (name == "drummap.clear")
     {
         processor.clearDrumMap();

@@ -234,7 +234,7 @@ export const useStore = create<StoreState>((set, get) => ({
         break;
       }
       case 'drummap':
-        set({ drumMap: e.map });
+        set({ drumMap: e.drummap ?? { name: '', entries: [] } });
         break;
       case 'settings':
         set({ settings: e.settings });
