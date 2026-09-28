@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { EditOp } from '../bridge/protocol';
 import { runAction } from '../state/dispatch';
@@ -53,10 +53,19 @@ export function Toolbar(): React.ReactElement {
   const selection = useStore((s) => s.selection);
   const editCursorPpq = useStore((s) => s.editCursorPpq);
   const chordAssist = useStore((s) => s.chordAssist);
+  const drumMap = useStore((s) => s.drumMap);
   const drumMapName = useStore((s) => s.drumMap.name);
   const drumModeActive = useStore((s) => s.drumMode);
   const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
   const [drumDraft, setDrumDraft] = useState<Array<{ n: number; name: string }>>([]);
+  // while the editor is open, keep the draft in sync with the store — the
+  // import file chooser completes asynchronously and lands via a drummap push
+  useEffect(() => {
+    if (!drumMapEditorOpen) return;
+    const entries = useStore.getState().drumMap.entries ?? [];
+    if (entries.length > 0) setDrumDraft(entries.map((e) => ({ ...e })));
+  }, [drumMapEditorOpen, drumMap]);
+
   const openDrumMapEditor = () => {
     const entries = useStore.getState().drumMap.entries ?? [];
     setDrumDraft(entries.length > 0 ? entries.map((e) => ({ ...e })) : [{ n: 36, name: '' }]);
