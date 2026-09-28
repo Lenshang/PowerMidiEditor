@@ -105,13 +105,6 @@ export function drawGridLines(
   drawLines(barPpq, c['grid-bar'], 0.9);
 }
 
-const GM_DRUMS: Record<number, string> = {
-  35: 'Kick', 36: 'Kick', 37: 'Stick', 38: 'Snare', 40: 'Snare2',
-  41: 'Fl.Tom', 42: 'CHH', 43: 'Fl.Tom', 44: 'PHH', 45: 'Tom',
-  46: 'OHH', 47: 'Tom', 48: 'Tom', 49: 'Crash', 50: 'Tom',
-  51: 'Ride', 52: 'China', 53: 'Bell', 54: 'Tamb', 55: 'Splash',
-  56: 'Cowbell', 57: 'Crash2', 59: 'Ride2',
-};
 
 let customDrumNames: Record<number, string> | null = null;
 
@@ -122,11 +115,6 @@ export function setCustomDrumNames(names: Record<number, string> | null): void {
 
 export function noteName(pitch: number): string {
   return `${NOTE_NAMES[pitch % 12]}${Math.floor(pitch / 12) - 1}`;
-}
-
-export function drumName(pitch: number): string {
-  if (customDrumNames && customDrumNames[pitch]) return customDrumNames[pitch];
-  return GM_DRUMS[pitch] ?? '';
 }
 
 export function drawKeys(
@@ -153,7 +141,7 @@ export function drawKeys(
       ctx.globalAlpha = 0.25;
       ctx.fillRect(0, y + rh - 1, w, 1);
       ctx.globalAlpha = 1;
-      const name = drumName(p);
+      const name = (customDrumNames && customDrumNames[p]) || noteName(p);
       if (name && v.rowHeight >= 8) {
         ctx.fillStyle = isPressed ? c['note-text'] : c['key-label'];
         ctx.font = '9px system-ui, sans-serif';
