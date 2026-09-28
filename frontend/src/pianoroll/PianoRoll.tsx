@@ -365,11 +365,28 @@ export function PianoRoll(): React.ReactElement {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
+  // Drum hits are point markers: the selectable window is the diamond around
+  // the note-on, not the full note length (which is invisible in drum mode).
+  const drumMarkerHalfPpq = () => {
+    const st = useStore.getState();
+    const size = Math.max(6, Math.min(st.view.rowHeight * 0.62, 22));
+    return (size / 2 + 3) / st.view.pxPerPpq; // +3px grab padding
+  };
+
   const hitNote = (x: number, y: number) => {
     const st = useStore.getState();
     const pitch = pitchAtY(st.view, y);
     const ppq = ppqAtX(st.view, x);
     const notes = st.doc.notes;
+    if (st.drumMode) {
+      const half = drumMarkerHalfPpq();
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const n = notes[i];
+        if (n.p !== pitch) continue;
+        if (ppq >= n.s - half && ppq <= n.s + half) return n;
+      }
+      return null;
+    }
     for (let i = notes.length - 1; i >= 0; i--) {
       const n = notes[i];
       if (n.p !== pitch) continue;
@@ -398,7 +415,8 @@ export function PianoRoll(): React.ReactElement {
   const beginNoteDrag = (hit: Note, e: React.PointerEvent, x: number, y: number) => {
     const st = useStore.getState();
     const v = st.view;
-    const drag = makeDrag(x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move', x, y);
+    // drum hits are point markers — no visible length, so no resize edge
+    const drag = makeDrag(st.drumMode ? 'move' : x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move', x, y);
     drag.duplicate = e.altKey;
     if (st.selection.includes(hit.id)) {
       drag.ids = [...st.selection];
@@ -624,7 +642,8 @@ export function PianoRoll(): React.ReactElement {
       const hit = hitNote(x, y);
       const el = viewRef.current;
       if (el) {
-        if (hit) el.dataset.hcursor = x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move';
+        // drum hits are point markers — always move, never resize
+        if (hit) el.dataset.hcursor = st.drumMode ? 'move' : x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move';
         else delete el.dataset.hcursor;
       }
     }
@@ -760,8 +779,13 @@ export function PianoRoll(): React.ReactElement {
       const isRange = st.activeTool === 'range';
       const p0 = isRange ? 0 : pitchAtY(v, Math.max(m.y0, m.y1));
       const p1 = isRange ? 127 : pitchAtY(v, Math.min(m.y0, m.y1));
+      const half = st.drumMode ? drumMarkerHalfPpq() : 0;
       const inside = st.doc.notes
-        .filter((n) => n.s + n.l >= ppq0 && n.s <= ppq1 && n.p >= p0 && n.p <= p1)
+        .filter((n) => {
+          if (st.drumMode)  // point markers: the marker center must sit in the swept range
+            return n.s + half >= ppq0 && n.s - half <= ppq1 && n.p >= p0 && n.p <= p1;
+          return n.s + n.l >= ppq0 && n.s <= ppq1 && n.p >= p0 && n.p <= p1;
+        })
         .map((n) => n.id);
       st.setSelection(m.additive ? [...new Set([...m.startIds, ...inside])] : inside);
       return;
