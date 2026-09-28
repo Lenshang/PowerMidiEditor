@@ -230,7 +230,7 @@ export function Toolbar(): React.ReactElement {
       {drumModeActive && (
         <button className="tb-btn" title="鼓组映射编辑器：自定义各键位名称，支持 .bwdrm / .drm 导入导出"
           onClick={openDrumMapEditor}>
-          <span className="tb-text">{drumMapName ? drumMapName.slice(0, 8) : t('tb.drumMap')}</span>
+          <span className="tb-text">{t('tb.drumMap')}</span>
         </button>
       )}
       <button className={`tb-btn ${chordAssist ? 'active' : ''}`} title={t('tb.chordAssistTitle')} onClick={toggleChordAssist}>
@@ -457,7 +457,7 @@ export function Toolbar(): React.ReactElement {
               }}>Import…</button>
               <button className="dm-foot-btn" onClick={() => {
                 void getBridge().invoke('drummap.export', {
-                  name: drumMapName || 'Custom',
+                  name: drumModalName || 'Custom',
                   entries: drumDraft.filter((r) => r.name.trim() !== ''),
                 }).then(() => setHint('已导出 .bwdrm')).catch(() => setHint('导出失败'));
               }}>Export…</button>
@@ -470,6 +470,9 @@ export function Toolbar(): React.ReactElement {
               <button className="dm-add" onClick={() => setDrumDraft((d) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
                 + Add
               </button>
+              <span className="foot-spring" />
+              <button className="dm-foot-btn" onClick={() => setDrumMapEditorOpen(false)}>取消</button>
+              <button className="dm-add" onClick={() => { applyDrumDraft(); setDrumMapEditorOpen(false); }}>完成</button>
             </div>
           </div>
         </div>

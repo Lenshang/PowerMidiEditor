@@ -669,13 +669,40 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
 
     if (name == "drummap.export")
     {
+        // Export the DRAFT the editor shows (passed in the payload), so
+        // Export… reflects the table before Apply.
+        auto payload = args.size() > 1 ? args[1] : juce::var();
+        std::vector<DrumMapEntry> rows;
+        juce::String exportName = "Custom";
+        if (auto* po = payload.getDynamicObject())
+        {
+            exportName = po->getProperty ("name").toString().trim();
+            if (auto* arr = po->getProperty ("entries").getArray())
+                for (const auto& v : *arr)
+                    if (auto* eo = v.getDynamicObject())
+                    {
+                        DrumMapEntry e;
+                        e.name = eo->getProperty ("name").toString().trim();
+                        e.inNote = juce::jlimit (0, 127, (int) (double) eo->getProperty ("i"));
+                        e.outNote = juce::jlimit (0, 127, (int) (double) eo->getProperty ("o"));
+                        e.channel = juce::jlimit (0, 16, (int) (double) eo->getProperty ("c"));
+                        if (e.name.isNotEmpty())
+                            rows.push_back (e);
+                    }
+        }
+        if (rows.empty())
+        {
+            pushToastKey ("toast.drumMapFailed");
+            return okResult (juce::var (false));
+        }
+
         auto chooser = std::make_unique<juce::FileChooser> ("Export drum map (.bwdrm)",
             juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
             "*.bwdrm");
         auto* raw = chooser.get();
         pendingChoosers.push_back (std::move (chooser));
         raw->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
-            [this, raw] (const juce::FileChooser& fc)
+            [this, raw, exportName, rows] (const juce::FileChooser& fc)
             {
                 auto file = fc.getResult();
                 if (file != juce::File{})
@@ -683,7 +710,7 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
                     auto path = file.getParentDirectory().getChildFile (
                         file.getFileNameWithoutExtension().upToLastOccurrenceOf (".", false, true) + ".bwdrm");
                     juce::String csv;
-                    for (const auto& e : processor.drumMap.entries)
+                    for (const auto& e : rows)
                         csv << e.name << "," << e.inNote << ",0," << e.outNote << "," << e.channel << "\r\n";
                     path.replaceWithText (csv);
                     pushToastKey ("toast.drumMapLoaded", {{ "name", path.getFileName() }});
