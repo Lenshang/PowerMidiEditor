@@ -639,10 +639,12 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
                 for (const auto& v : *arr)
                     if (auto* eo = v.getDynamicObject())
                     {
-                        const int n = juce::jlimit (0, 127, (int) (double) eo->getProperty ("n"));
                         const auto name = eo->getProperty ("name").toString().trim();
+                        const int inN = juce::jlimit (0, 127, (int) (double) eo->getProperty ("i"));
+                        const int outN = juce::jlimit (0, 127, (int) (double) eo->getProperty ("o"));
+                        const int ch = juce::jlimit (0, 16, (int) (double) eo->getProperty ("c"));
                         if (name.isNotEmpty())
-                            processor.drumMap.entries.push_back ({ n, name });
+                            processor.drumMap.entries.push_back ({ name, inN, outN, ch });
                     }
             processor.saveDrumMapPrefs();
             pushDrumMap();
@@ -667,7 +669,7 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
                         file.getFileNameWithoutExtension().upToLastOccurrenceOf (".", false, true) + ".bwdrm");
                     juce::String csv;
                     for (const auto& e : processor.drumMap.entries)
-                        csv << e.name << "," << e.note << ",0," << e.note << ",0" << "\r\n";
+                        csv << e.name << "," << e.inNote << ",0," << e.outNote << "," << e.channel << "\r\n";
                     path.replaceWithText (csv);
                     pushToastKey ("toast.drumMapLoaded", {{ "name", path.getFileName() }});
                 }
@@ -1008,7 +1010,9 @@ void UiBridge::pushDrumMap()
     for (const auto& e : processor.drumMap.entries)
     {
         auto eo = new juce::DynamicObject();
-        eo->setProperty ("n", e.note);
+        eo->setProperty ("i", e.inNote);
+        eo->setProperty ("o", e.outNote);
+        eo->setProperty ("c", e.channel);
         eo->setProperty ("name", e.name);
         arr.add (juce::var (eo));
     }

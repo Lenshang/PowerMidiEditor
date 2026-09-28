@@ -5,15 +5,18 @@ namespace pme
 
 namespace
 {
-    void addEntry (DrumMapData& out, int note, const juce::String& name)
+    void addEntry (DrumMapData& out, const juce::String& name,
+                   int inNote, int inChannel, int outNote, int channel)
     {
-        if (note < 0 || note > 127 || name.trim().isEmpty())
+        if (inNote < 0 || inNote > 127 || outNote < 0 || outNote > 127)
             return;
-        // keep first name per pitch; later duplicates don't override
+        if (name.trim().isEmpty())
+            return;
+        // keep the first rule per source pitch; later duplicates don't override
         for (const auto& e : out.entries)
-            if (e.note == note)
+            if (e.inNote == inNote)
                 return;
-        out.entries.push_back ({ note, name.trim() });
+        out.entries.push_back ({ name.trim(), inNote, inChannel, outNote, channel });
     }
 }
 
@@ -21,12 +24,7 @@ bool DrumMapIO::parse (const juce::File& file, DrumMapData& out)
 {
     const auto text = file.loadFileAsString();
     out = {};
-    const auto fileName = file.getFileName();
-
-    if (text.trim().startsWith ("<"))
-        out.mapName = fileName.upToLastOccurrenceOf (".", false, true);
-    else
-        out.mapName = fileName.upToLastOccurrenceOf (".", false, true);
+    out.mapName = file.getFileNameWithoutExtension();
 
     if (parseBwdrm (text, out))
         return true;
@@ -38,7 +36,7 @@ bool DrumMapIO::parse (const juce::File& file, DrumMapData& out)
 }
 
 // "Name,SourceNote,SourceChannel,TargetNote,TargetChannel"
-// (reference: PowerDrumMapper NoteMapping::fromCsvString)
+// Channel 0 = any/keep (PowerDrumMapper convention).
 bool DrumMapIO::parseBwdrm (const juce::String& text, DrumMapData& out)
 {
     auto lines = juce::StringArray::fromLines (text);
@@ -55,14 +53,15 @@ bool DrumMapIO::parseBwdrm (const juce::String& text, DrumMapData& out)
         if (tokens.size() < 5)
             continue;
 
-        const int sourceNote = juce::jlimit (0, 127, tokens[1].getIntValue());
-        const int targetNote = juce::jlimit (0, 127, tokens[3].getIntValue());
         const auto name = tokens[0].trim();
+        const int inNote = juce::jlimit (0, 127, tokens[1].getIntValue());
+        const int inChannel = juce::jlimit (0, 16, tokens[2].getIntValue());
+        const int outNote = juce::jlimit (0, 127, tokens[3].getIntValue());
+        const int outChannel = juce::jlimit (0, 16, tokens[4].getIntValue());
         if (name.isEmpty())
             continue;
 
-        addEntry (out, sourceNote, name);
-        addEntry (out, targetNote, name);
+        addEntry (out, name, inNote, inChannel, outNote, outChannel);
         sawValid = true;
     }
 
@@ -71,8 +70,8 @@ bool DrumMapIO::parseBwdrm (const juce::String& text, DrumMapData& out)
     return sawValid;
 }
 
-// Cubase drum map XML: <DrumMap><list name="Map"><item>…
-// INote = input pitch, ONote = output pitch, Name = instrument name.
+// Cubase drum map XML: INote = input pitch, ONote = output pitch,
+// Channel is 0-based (0..15 → 1..16); -1/-2 = keep original channel.
 bool DrumMapIO::parseCubaseDrm (const juce::String& xmlText, DrumMapData& out)
 {
     auto doc = juce::XmlDocument::parse (xmlText);
@@ -92,7 +91,7 @@ bool DrumMapIO::parseCubaseDrm (const juce::String& xmlText, DrumMapData& out)
             if (! item->hasTagName ("item"))
                 continue;
 
-            int inNote = -1, outNote = -1;
+            int inNote = -1, outNote = -1, cubaseCh = -1;
             juce::String name;
             for (auto* prop = item->getFirstChildElement(); prop != nullptr;
                  prop = prop->getNextElement())
@@ -102,15 +101,16 @@ bool DrumMapIO::parseCubaseDrm (const juce::String& xmlText, DrumMapData& out)
                     inNote = juce::jlimit (0, 127, prop->getIntAttribute ("value"));
                 else if (attrName == "ONote")
                     outNote = juce::jlimit (0, 127, prop->getIntAttribute ("value"));
+                else if (attrName == "Channel")
+                    cubaseCh = prop->getIntAttribute ("value");
                 else if (attrName == "Name")
                     name = prop->getStringAttribute ("value").trim();
             }
 
-            if (name.isEmpty())
-                continue;
-            addEntry (out, inNote, name);
-            addEntry (out, outNote, name);
-            if (inNote >= 0 || outNote >= 0)
+            // Cubase channel: -1/-2 = any/keep, else 0-based → 1-based
+            const int channel = cubaseCh < 0 ? 0 : juce::jlimit (1, 16, cubaseCh + 1);
+            addEntry (out, name, inNote, 0, outNote, channel);
+            if (inNote >= 0 && outNote >= 0 && ! name.isEmpty())
                 sawValid = true;
         }
     }

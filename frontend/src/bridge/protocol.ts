@@ -135,7 +135,7 @@ export interface SettingsState {
 
 export interface DrumMapState {
   name: string;
-  entries: Array<{ n: number; name: string }>;
+  entries: Array<{ i: number; o: number; c: number; name: string }>;
 }
 
 export interface MidiInEvent {

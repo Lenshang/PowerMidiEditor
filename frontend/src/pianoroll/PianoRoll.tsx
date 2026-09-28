@@ -94,7 +94,7 @@ export function PianoRoll(): React.ReactElement {
   const drumMap = useStore((st) => st.drumMap);
   useEffect(() => {
     const names: Record<number, string> = {};
-    for (const e of drumMap.entries) names[e.n] = e.name;
+    for (const e of drumMap.entries) names[e.i] = e.name;
     setCustomDrumNames(drumMap.entries.length > 0 ? names : null);
     draw();
   }, [drumMap]);

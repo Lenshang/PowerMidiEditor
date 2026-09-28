@@ -170,7 +170,7 @@ export const useStore = create<StoreState>((set, get) => ({
     snapBypass: 'shift',
     lang: 'en',
   },
-  drumMap: { name: '', entries: [] as Array<{ n: number; name: string }> } as import('../bridge/protocol').DrumMapState,
+  drumMap: { name: '', entries: [] } as import('../bridge/protocol').DrumMapState,
   transport: emptyTransport,
   view: {
     pxPerPpq: 2, rowHeight: 16, scrollXPpq: 0, scrollYPx: (127 - 76) * 16,

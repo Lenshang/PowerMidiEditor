@@ -309,12 +309,15 @@ static void testDrumMapParse()
                               .getChildFile ("PmeTests_test.bwdrm");
         temp.replaceWithText ("Kick1,60,0,36,10\r\nSnare,62,0,38,10\r\n\r\nBroken Line\n", false);
         CHECK (DrumMapIO::parse (temp, data));
-        CHECK (data.entries.size() == 4); // Kick1 (60+36), Snare (62+38)
-        CHECK (data.nameFor (60) == "Kick1");
-        CHECK (data.nameFor (36) == "Kick1");
+        CHECK (data.entries.size() == 2); // one rule per source note
+        CHECK (data.nameFor (60) == "Kick1");  // keyboard labels follow SOURCE key
         CHECK (data.nameFor (62) == "Snare");
-        CHECK (data.nameFor (38) == "Snare");
-        CHECK (data.nameFor (40).isEmpty());
+        CHECK (data.nameFor (36).isEmpty());   // target pitch is not a label key
+        // remap semantics: 60 → 36 on channel 10
+        int outN = -1, outC = -1;
+        CHECK (data.remap (60, 1, outN, outC));
+        CHECK (outN == 36 && outC == 10);
+        CHECK (! data.remap (40, 1, outN, outC));
         temp.deleteFile();
     }
 

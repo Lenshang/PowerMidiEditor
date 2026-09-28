@@ -57,7 +57,7 @@ export function Toolbar(): React.ReactElement {
   const drumMapName = useStore((s) => s.drumMap.name);
   const drumModeActive = useStore((s) => s.drumMode);
   const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
-  const [drumDraft, setDrumDraft] = useState<Array<{ n: number; name: string }>>([]);
+  const [drumDraft, setDrumDraft] = useState<Array<{ i: number; o: number; c: number; name: string }>>([]);
   // while the editor is open, keep the draft in sync with the store — the
   // import file chooser completes asynchronously and lands via a drummap push
   useEffect(() => {
@@ -68,13 +68,13 @@ export function Toolbar(): React.ReactElement {
 
   const openDrumMapEditor = () => {
     const entries = useStore.getState().drumMap.entries ?? [];
-    setDrumDraft(entries.length > 0 ? entries.map((e) => ({ ...e })) : [{ n: 36, name: '' }]);
+    setDrumDraft(entries.length > 0 ? entries.map((e) => ({ ...e })) : [{ i: 36, o: 36, c: 0, name: '' }]);
     setDrumMapEditorOpen(true);
   };
   const applyDrumDraft = () => {
     const clean = drumDraft
-      .filter((r) => r.name.trim() !== '' && Number.isFinite(r.n) && r.n >= 0 && r.n <= 127)
-      .map((r) => ({ n: Math.round(r.n), name: r.name.trim() }));
+      .filter((r) => r.name.trim() !== '' && Number.isFinite(r.i) && r.i >= 0 && r.i <= 127)
+      .map((r) => ({ i: Math.round(r.i), o: Math.round(r.o), c: Math.round(r.c), name: r.name.trim() }));
     const st = useStore.getState();
     st.editDoc === undefined; // noop guard
     void getBridge().invoke('drummap.set', { name: drumMapName || 'Custom', entries: clean }).then(() => {
@@ -395,12 +395,12 @@ export function Toolbar(): React.ReactElement {
                 }}>{t('exp.export')}</button>
                 <button className="mini-btn" onClick={() => {
                   void getBridge().invoke('drummap.clear').then(() => {
-                    setDrumDraft([{ n: 36, name: '' }]);
+                    setDrumDraft([{ i: 36, o: 36, c: 0, name: '' }]);
                     setHint('已清除鼓组映射（恢复 GM 名称）');
                   }).catch(() => {});
                 }}>{t('lane.clear')}</button>
                 <span className="foot-spring" />
-                <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ n: number; name: string }>) => [...d, { n: 36, name: '' }])}>
+                <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => [...d, { i: 36, o: 36, c: 0, name: '' }])}>
                   + {t('lane.addCc')}
                 </button>
               </div>
@@ -408,23 +408,30 @@ export function Toolbar(): React.ReactElement {
                 <thead>
                   <tr>
                     <td style={{ width: '30%' }}>{t('exp.name')}</td>
-                    <td style={{ width: '20%' }}>Key</td>
+                    <td style={{ width: '34%' }}>In / Out / Ch</td>
                     <td></td>
                   </tr>
                 </thead>
                 <tbody>
-                  {drumDraft.map((r: { n: number; name: string }, i: number) => (
+                  {drumDraft.map((r: { i: number; o: number; c: number; name: string }, i: number) => (
                     <tr key={i}>
                       <td>
                         <input className="lane-cc-input" value={r.name}
-                          onChange={(e) => setDrumDraft((d: Array<{ n: number; name: string }>) => d.map((x: { n: number; name: string }, j: number) => j === i ? { ...x, name: e.target.value } : x))} />
+                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, name: e.target.value } : x))} />
                       </td>
-                      <td>
-                        <input className="lane-cc-input" type="number" min={0} max={127} value={r.n}
-                          onChange={(e) => setDrumDraft((d: Array<{ n: number; name: string }>) => d.map((x: { n: number; name: string }, j: number) => j === i ? { ...x, n: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
+                      <td style={{ display: 'flex', gap: 4 }}>
+                        <input className="lane-cc-input" type="number" min={0} max={127} title="输入键位（钢琴窗绘制的音高）" value={r.i}
+                          style={{ width: 56 }}
+                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, i: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
+                        <input className="lane-cc-input" type="number" min={0} max={127} title="输出键位（下游收到的音高）" value={r.o}
+                          style={{ width: 56 }}
+                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, o: Math.min(127, Math.max(0, Number(e.target.value) || 0)) } : x))} />
+                        <input className="lane-cc-input" type="number" min={0} max={16} title="通道（0 = 保持原通道）" value={r.c}
+                          style={{ width: 44 }}
+                          onChange={(e) => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.map((x: { i: number; o: number; c: number; name: string }, j: number) => j === i ? { ...x, c: Math.min(16, Math.max(0, Number(e.target.value) || 0)) } : x))} />
                       </td>
                       <td className="sc-actions">
-                        <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ n: number; name: string }>) => d.filter((_: { n: number; name: string }, j: number) => j !== i))}>{t('exp.delete')}</button>
+                        <button className="mini-btn" onClick={() => setDrumDraft((d: Array<{ i: number; o: number; c: number; name: string }>) => d.filter((_: { i: number; o: number; c: number; name: string }, j: number) => j !== i))}>{t('exp.delete')}</button>
                       </td>
                     </tr>
                   ))}

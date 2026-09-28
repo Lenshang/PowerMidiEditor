@@ -34,7 +34,8 @@ PowerMidiEditorAudioProcessor::PowerMidiEditorAudioProcessor()
             if (auto* arr = dm->getProperty ("drumMapEntries").getArray())
                 for (const auto& v : *arr)
                     if (auto* eo = v.getDynamicObject())
-                        drumMap.entries.push_back ({ (int) eo->getProperty ("n"), eo->getProperty ("name").toString() });
+                        drumMap.entries.push_back ({ eo->getProperty ("name").toString(),
+                            (int) eo->getProperty ("i"), (int) eo->getProperty ("o"), (int) eo->getProperty ("c") });
         }
     }
 }
@@ -228,6 +229,32 @@ void PowerMidiEditorAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
 
     // -- schedule pattern notes into the output -----------------------------
     engine.render (midi, in);
+
+    // -- drum map remap: rewrite scheduled + passed-through notes so the
+    // downstream instrument receives the mapped pitch/channel --------------
+    if (! drumMap.entries.empty())
+    {
+        juce::MidiBuffer remapped;
+        remapped.ensureSize (midi.getNumEvents() * 2);
+        for (const auto metadata : midi)
+        {
+            const auto& m = metadata.getMessage();
+            if (m.isNoteOn() || m.isNoteOff())
+            {
+                int outNote = m.getNoteNumber(), outCh = m.getChannel();
+                if (drumMap.remap (m.getNoteNumber(), m.getChannel(), outNote, outCh))
+                {
+                    auto msg = m.isNoteOn()
+                        ? juce::MidiMessage::noteOn (outCh, outNote, m.getFloatVelocity())
+                        : juce::MidiMessage::noteOff (outCh, outNote, m.getFloatVelocity());
+                    remapped.addEvent (msg, metadata.samplePosition);
+                    continue;
+                }
+            }
+            remapped.addEvent (m, metadata.samplePosition);
+        }
+        midi.swapWith (remapped);
+    }
 
     // -- output monitor: the last PB / CC we actually sent downstream --------
     int monPb = -1, monCcNumber = -1, monCcValue = -1;
@@ -469,7 +496,9 @@ void PowerMidiEditorAudioProcessor::saveDrumMapPrefs() const
     for (const auto& e : drumMap.entries)
     {
         auto eo = new juce::DynamicObject();
-        eo->setProperty ("n", e.note);
+        eo->setProperty ("i", e.inNote);
+        eo->setProperty ("o", e.outNote);
+        eo->setProperty ("c", e.channel);
         eo->setProperty ("name", e.name);
         arr.add (juce::var (eo));
     }

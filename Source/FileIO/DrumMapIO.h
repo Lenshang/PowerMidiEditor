@@ -5,15 +5,18 @@
 namespace pme
 {
 
-// Drum-kit note-name maps for drum mode:
-//  - Ample Sound .bwdrm: CSV "Name,SourceNote,SourceChannel,TargetNote,TargetChannel"
-//  - Cubase .drm: XML <DrumMap><list name="Map"><item>… INote/ONote/Name …
-// Both sources name-pair two pitches (input + output), so parsing yields
-// entries for both; the keyboard shows whichever pitch is drawn.
+// Drum-kit note REMAPPER for drum mode (PowerDrumMapper semantics):
+//  - Ample Sound .bwdrm: CSV "Name,SourceNote,SourceCh,TargetNote,TargetCh"
+//  - Cubase .drm: XML <DrumMap><list name="Map"><item>… INote/ONote/Channel/Name
+// A hit drawn/played at inNote (channel matching inChannel, 0 = any) is sent
+// downstream as outNote on outChannel (0 = keep the incoming channel).
 struct DrumMapEntry
 {
-    int note = -1;        // 0..127
     juce::String name;
+    int inNote = -1;     // 0..127 source key (what you draw/play)
+    int inChannel = 0;   // 0 = match any incoming channel, else 1..16
+    int outNote = -1;    // 0..127 target key (what the synth receives)
+    int channel = 0;     // 0 = keep incoming channel, else 1..16
 };
 
 struct DrumMapData
@@ -22,12 +25,29 @@ struct DrumMapData
     std::vector<DrumMapEntry> entries;
 
     bool isValid() const noexcept { return ! entries.empty(); }
-    juce::String nameFor (int note) const noexcept
+
+    juce::String nameFor (int inNote) const noexcept
     {
         for (const auto& e : entries)
-            if (e.note == note)
+            if (e.inNote == inNote)
                 return e.name;
         return {};
+    }
+
+    /** Remap a note/channel. Returns false when no rule matches. */
+    bool remap (int inNote, int inChannel, int& outNote, int& outChannel) const noexcept
+    {
+        for (const auto& e : entries)
+        {
+            if (e.inNote != inNote)
+                continue;
+            if (e.inChannel != 0 && e.inChannel != inChannel)
+                continue;
+            outNote = e.outNote;
+            outChannel = e.channel != 0 ? e.channel : inChannel;
+            return true;
+        }
+        return false;
     }
 };
 
