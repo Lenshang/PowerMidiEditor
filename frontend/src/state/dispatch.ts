@@ -101,10 +101,20 @@ export function runAction(id: string): void {
       const sel = s.doc.notes.filter((n) => s.selection.includes(n.id));
       const minStart = Math.min(...sel.map((n) => n.s));
       const span = Math.max(...sel.map((n) => n.s + n.l)) - minStart;
+      const beforeIds = new Set(s.doc.notes.map((n) => n.id));
       const ops: EditOp[] = sel.map((n) => ({
         op: 'add' as const,
-        note: { p: n.p, s: n.s + span, l: n.l, v: n.v, m: n.m, c: n.c, a: n.a },
+        note: { p: n.p, s: n.s + span, l: n.l, v: n.v, m: n.m, c: n.c, a: n.a, ly: n.ly },
       }));
+      // selection moves to the copies once the doc push lands, so repeated
+      // Ctrl+D keeps duplicating the newest copies
+      const off = getBridge().onEvent((ev: unknown) => {
+        const e = ev as { kind?: string };
+        if (e.kind !== 'doc') return;
+        off();
+        const st = useStore.getState();
+        st.setSelection(st.doc.notes.filter((n) => !beforeIds.has(n.id)).map((n) => n.id));
+      });
       s.editDoc(ops, t('disp.duplicated'));
       break;
     }

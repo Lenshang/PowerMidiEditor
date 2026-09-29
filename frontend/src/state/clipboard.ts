@@ -19,7 +19,7 @@ export function copySelected(doc: DocumentState, selection: number[]): number {
   const span = Math.max(...selected.map((n) => n.s + n.l)) - minStart;
   clip = {
     span,
-    notes: selected.map((n) => ({ p: n.p, s: n.s - minStart, l: n.l, v: n.v, m: n.m, c: n.c, a: n.a })),
+    notes: selected.map((n) => ({ p: n.p, s: n.s - minStart, l: n.l, v: n.v, m: n.m, c: n.c, a: n.a, ly: n.ly })),
   };
   return selected.length;
 }
