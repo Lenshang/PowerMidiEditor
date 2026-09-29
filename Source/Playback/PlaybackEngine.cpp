@@ -474,6 +474,17 @@ void PlaybackEngine::render (juce::MidiBuffer& out, const EngineInputs& in)
     }
     wasPlaying = in.playing;
 
+    // host transport STOPPED while the internal transport was running:
+    // stop it too — the user expects the whole plugin to go silent
+    if (! in.playing && internalPlaying && wasPlaying)
+    {
+        internalPlaying = false;
+        internalStarted = false;
+        internalFlagForUi.store (false, std::memory_order_relaxed);
+        flushNotes (out, internalNotes, 0);
+        resetCurvesToNeutral (out);
+    }
+
     // ---------------- internal transport (the plugin's own play button) -----
     if (auditionStopRequested)
     {

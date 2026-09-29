@@ -503,6 +503,27 @@ static void testInternalTransport()
             pbAfterStop = i.getMessage().getPitchWheelValue();
     CHECK (pbAfterStop == 8192);
 
+    // host transport STOPS while internal transport runs: the whole plugin
+    // must go silent (this was the "DAW stops, plugin keeps playing" bug)
+    {
+        PlaybackEngine eng2;
+        juce::MidiBuffer out2;
+        eng2.startInternal (0.0);
+        eng2.render (out2, makeInputs (*snap, 12000, false, 0.0, 0)); // host stopped
+        CHECK (countOn (out2, 60) == 1);
+        CHECK (eng2.isInternalPlayingForUi());
+
+        // host then STARTS playing -> internal must hand over silently
+        out2.clear();
+        eng2.render (out2, makeInputs (*snap, 12000, true, 0.5, 12000));
+        CHECK (! eng2.isInternalPlayingForUi());
+
+        // host then STOPS -> nothing left sounding from either path
+        out2.clear();
+        eng2.render (out2, makeInputs (*snap, 12000, false, 1.0, 24000));
+        CHECK (! eng2.isInternalPlayingForUi());
+    }
+
     // host transport playing takes over: internal play stops by itself
     eng.startInternal (0.0);
     out.clear();
