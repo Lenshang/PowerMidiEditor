@@ -47,7 +47,9 @@ private:
     void exportExpressionMap (const juce::String& suggestedName);
     void importExpressionMap();
     void importCubaseExpressionMap();
+    void launchMidiDrag (const juce::File& temp);
     void dragMidiOut();
+    void dragSelectedMidiOut (const std::vector<juce::uint32>& ids);
     void saveProject();
     void openProject();
 

@@ -7,6 +7,7 @@
 #include "../Source/FileIO/MidiFileIO.h"
 #include "../Source/FileIO/ExpressionMapIO.h"
 #include "../Source/FileIO/DrumMapIO.h"
+#include "../Source/FileIO/SelectionSnapshot.hpp"
 
 using namespace pme;
 
@@ -356,6 +357,38 @@ static void testDrumMapParse()
         CHECK (! DrumMapIO::parse (temp, data));
         temp.deleteFile();
     }
+}
+
+static void testSelectionSnapshot()
+{
+    MidiClipDocument doc;
+    Note a; a.pitch = 60; a.start = 4.0; a.length = 0.5; a.lyric = "ni";
+    Note b; b.pitch = 62; b.start = 4.5; b.length = 0.5; b.lyric = "hao";
+    Note c; c.pitch = 64; c.start = 1.0; c.length = 0.5; // before the selection
+    doc.beginTransaction ("s");
+    const auto idA = doc.addNote (a);
+    const auto idB = doc.addNote (b);
+    doc.addNote (c);
+    doc.commitTransaction();
+    auto snap = doc.getSnapshot();
+
+    bool ok = false;
+    auto sel = makeSelectionSnapshot (*snap, { idA, idB }, ok);
+    CHECK (ok);
+    CHECK (sel.notes.size() == 2);
+    CHECK (sel.ccs.empty() && sel.pbs.empty());
+    // time normalized: first selected note starts at 0
+    if (sel.notes.size() == 2)
+    {
+        CHECK (sel.notes[0].start == 0.0);
+        CHECK (sel.notes[1].start == 0.5);
+        CHECK (sel.notes[0].lyric == "ni");  // lyrics travel with the notes
+        CHECK (sel.notes[1].lyric == "hao");
+    }
+
+    // unknown ids -> not ok
+    sel = makeSelectionSnapshot (*snap, { 999 }, ok);
+    CHECK (! ok);
 }
 
 static void testLyricRoundTrip()
@@ -762,6 +795,7 @@ int main()
     testInternalTransport();
     testExpressionMapImport();
     testLyricRoundTrip();
+    testSelectionSnapshot();
     testDrumMapParse();
     testChordsAndArticulations();
     testMidiMemoryImport();

@@ -1,6 +1,7 @@
 #include "UiBridge.h"
 #include "../FileIO/ExpressionMapIO.h"
 #include "../FileIO/DrumMapIO.h"
+#include "../FileIO/SelectionSnapshot.hpp"
 #include "../Util/VarUtil.h"
 #include "../FileIO/MidiFileIO.h"
 #include <BinaryData.h>
@@ -761,6 +762,18 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         return okResult (juce::var (true));
     }
 
+    if (name == "file.dragMidiOutSelected")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        std::vector<juce::uint32> ids;
+        if (payload != nullptr)
+            if (auto* arr = payload->getProperty ("ids").getArray())
+                for (const auto& v : *arr)
+                    ids.push_back ((juce::uint32) (int) (double) v);
+        dragSelectedMidiOut (ids);
+        return okResult (juce::var (true));
+    }
+
     if (name == "file.saveProject")
     {
         saveProject();
@@ -808,17 +821,8 @@ void UiBridge::importCubaseExpressionMap()
         });
 }
 
-void UiBridge::dragMidiOut()
+void UiBridge::launchMidiDrag (const juce::File& temp)
 {
-    auto snap = processor.document.getSnapshot();
-    auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                    .getChildFile ("PowerMidiEditor_Export.mid");
-    if (! MidiFileIO::exportMidi (*snap, temp))
-    {
-        pushToastKey ("toast.dragOutFailed");
-        return;
-    }
-
     // JUCE 9 runs the OLE drag loop on a background thread and it tracks the
     // real mouse state: DoDragDrop cancels immediately unless the primary
     // button is still held. The frontend therefore fires this on pointerdown.
@@ -829,6 +833,44 @@ void UiBridge::dragMidiOut()
 
     juce::DragAndDropContainer::performExternalDragDropOfFiles (files, true, dragSource);
     pushToastKey ("toast.dragOutStarted");
+}
+
+void UiBridge::dragMidiOut()
+{
+    auto snap = processor.document.getSnapshot();
+    auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                    .getChildFile ("PowerMidiEditor_Export.mid");
+    if (! MidiFileIO::exportMidi (*snap, temp))
+    {
+        pushToastKey ("toast.dragOutFailed");
+        return;
+    }
+    launchMidiDrag (temp);
+}
+
+void UiBridge::dragSelectedMidiOut (const std::vector<juce::uint32>& ids)
+{
+    if (ids.empty())
+    {
+        pushToastKey ("toast.dragOutFailed");
+        return;
+    }
+    auto snap = processor.document.getSnapshot();
+    bool ok = false;
+    auto selected = makeSelectionSnapshot (*snap, ids, ok);
+    if (! ok)
+    {
+        pushToastKey ("toast.dragOutFailed");
+        return;
+    }
+    auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                    .getChildFile ("PowerMidiEditor_Export.mid");
+    if (! MidiFileIO::exportMidi (selected, temp))
+    {
+        pushToastKey ("toast.dragOutFailed");
+        return;
+    }
+    launchMidiDrag (temp);
 }
 
 void UiBridge::saveProject()

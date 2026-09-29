@@ -83,6 +83,17 @@ export const IconRedo = (p: IconProps) => svg(p.size, <>
   <path d="M10.5 3.5L13 6l-2.5 2.5" />
 </>);
 
+export const IconDragOut = (p: IconProps) => svg(p.size, <>
+  <rect x="1.5" y="6" width="8" height="8" rx="1.5" />
+  <path d="M8 8 L14 2 M9.5 2 H14 V6.5" />
+</>);
+
+export const IconDragOutSelected = (p: IconProps) => svg(p.size, <>
+  <rect x="1.5" y="6" width="8" height="8" rx="1.5" strokeDasharray="2 2" />
+  <path d="M8 8 L14 2 M9.5 2 H14 V6.5" />
+  <circle cx="5.5" cy="10" r="1.4" fill="currentColor" stroke="none" />
+</>);
+
 export const IconGear = (p: IconProps) => svg(p.size, <>
   <circle cx="8" cy="8" r="2.2" />
   <path d="M8 1.8l.7 1.8 1.9-.5 1 1.7 1.8.7-1 1.7 1.3 1.4-1.3 1.4 1 1.7-1.8.7-1 1.7-1.9-.5L8 14.2l-.7-1.8-1.9.5-1-1.7-1.8-.7 1-1.7L2.3 8l1.3-1.4-1-1.7 1.8-.7 1-1.7 1.9.5z" opacity="0.9" />

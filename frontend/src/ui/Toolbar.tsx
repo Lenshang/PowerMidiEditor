@@ -7,7 +7,7 @@ import { useStore, type ToolId } from '../state/store';
 import { t } from '../i18n';
 import { CHORD_QUALITIES, NOTE_NAMES } from '../pianoroll/render';
 import {
-  IconAudition, IconEraser, IconGear, IconLogo, IconMagnet, IconPencil,
+  IconAudition, IconDragOut, IconDragOutSelected, IconEraser, IconGear, IconLogo, IconMagnet, IconPencil,
   IconRange, IconRazor, IconRedo, IconSelect, IconSpray, IconStep, IconUndo,
 } from './icons';
 
@@ -353,7 +353,18 @@ export function Toolbar(): React.ReactElement {
           if (e.button !== 0) return;
           void getBridge().invoke('file.dragMidiOut').catch(() => {});
         }}>
+        <IconDragOut />
         <span className="tb-text">{t('tb.dragOut')}</span>
+      </button>
+      <button className="tb-btn" title={t('tb.dragOutSelTitle')}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          const st = useStore.getState();
+          if (st.selection.length === 0) { st.setHint(t('tb.dragOutSelEmpty')); return; }
+          void getBridge().invoke('file.dragMidiOutSelected', { ids: st.selection }).catch(() => {});
+        }}>
+        <IconDragOutSelected />
+        <span className="tb-text">{t('tb.dragOutSel')}</span>
       </button>
       <button className="tb-btn" title={t('tb.saveTitle')} onClick={() => {
         void getBridge().invoke('file.saveProject').catch(() => {});
