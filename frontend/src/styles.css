@@ -755,24 +755,14 @@ body {
   box-shadow: inset 0 -18px 0 rgba(138, 99, 210, 0.85);
 }
 
-/* lyric lane editor: strip origin aligned with roll content (64px keys col) */
+/* lyric lane editor: strip aligned with the piano-roll timeline */
 .lyric-body {
   position: relative; overflow: hidden;
-  margin-left: 64px; min-width: 0;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 6px 8px 6px 0;
+  margin-left: 64px;
+  display: flex; flex-direction: column;
+  padding: 4px 8px 4px 0;
   height: 108px;
 }
-.lyric-batch { display: flex; gap: 8px; align-items: center; padding-left: 8px; }
-.lyric-batch-input {
-  flex: 1; height: 26px; background: var(--bg-panel2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px;
-  font-family: inherit; font-size: 12px; padding: 0 8px; outline: none;
-}
-.lyric-batch-input:focus { border-color: var(--accent); }
-.lyric-split { display: flex; gap: 2px; flex: none; }
-.lyric-split .mini-btn.active { border-color: var(--accent); color: var(--text); }
-.lyric-hint { font-size: 11px; color: var(--text-faint); white-space: nowrap; }
 .lyric-strip { position: relative; flex: 1; overflow: hidden; }
 .lyric-strip-inner { position: absolute; inset: 0; will-change: transform; }
 .lyric-cell {

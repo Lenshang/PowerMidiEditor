@@ -50,31 +50,7 @@ export function LanePanel(): React.ReactElement {
   const sizeRef = useRef({ w: 800, h: LANE_H });
   const dragRef = useRef<DragState | null>(null);
   const [drawMode, setDrawMode] = useState<'point' | 'line' | 'free'>('point');
-  const lyricBatchRef = useRef<HTMLInputElement>(null);
-  const [lyricSplit, setLyricSplit] = useState<'space' | 'char'>('space');
 
-  // Distribute space-separated syllables onto notes in time order: the
-  // selection when there is one, otherwise the whole take.
-  const applyLyricBatch = () => {
-    const st = useStore.getState();
-    const raw = lyricBatchRef.current ? lyricBatchRef.current.value : '';
-    const syllables = lyricSplit === 'char'
-      ? Array.from(raw.replace(/\s+/g, ''))
-      : raw.trim().split(/\s+/).filter(Boolean);
-    if (syllables.length === 0) { st.setHint(ti('lane.lyricEmpty')); return; }
-    let targets = st.doc.notes;
-    if (st.selection.length > 0)
-      targets = targets.filter((n) => st.selection.includes(n.id));
-    targets = [...targets].sort((a, b) => a.s - b.s);
-    if (targets.length === 0) { st.setHint(ti('disp.noSelection')); return; }
-    const ops: EditOp[] = targets.map((n, i) => ({
-      op: 'update' as const,
-      note: { id: n.id, ly: i < syllables.length ? syllables[i] : '' },
-    }));
-    commitOps(ops, ti('lane.lyricApply'));
-    if (lyricBatchRef.current) lyricBatchRef.current.value = '';
-    st.setHint(ti('lane.lyricApplied', { count: Math.min(targets.length, syllables.length) }));
-  };
   const [addCcOpen, setAddCcOpen] = useState(false);
   const [newCc, setNewCc] = useState<number>(11);
 
@@ -719,21 +695,6 @@ export function LanePanel(): React.ReactElement {
         };
         return (
           <div className="lyric-body" style={{ height: LANE_H }}>
-            <div className="lyric-batch">
-              <input className="lyric-batch-input" placeholder={ti('lane.lyricBatchHint')}
-                ref={lyricBatchRef}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyLyricBatch(); }} />
-              <div className="lyric-split">
-                <button className={`mini-btn ${lyricSplit === 'space' ? 'active' : ''}`}
-                  title={ti('lane.lyricSplitSpace')}
-                  onClick={() => setLyricSplit('space')}>{ti('lane.lyricSplitSpace')}</button>
-                <button className={`mini-btn ${lyricSplit === 'char' ? 'active' : ''}`}
-                  title={ti('lane.lyricSplitChar')}
-                  onClick={() => setLyricSplit('char')}>{ti('lane.lyricSplitChar')}</button>
-              </div>
-              <button className="mini-btn primary" onClick={applyLyricBatch}>{ti('lane.lyricApply')}</button>
-              <span className="lyric-hint">{ti('lane.hintLyric')}</span>
-            </div>
             <div className="lyric-strip">
               <div className="lyric-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
                 {ordered.map((n, idx) => {
