@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getBridge } from './bridge/bridge';
 import { PianoRoll } from './pianoroll/PianoRoll';
 import { runAction, zoomFit } from './state/dispatch';
@@ -18,6 +18,16 @@ export default function App(): React.ReactElement {
   const lang = useStore((s) => s.settings.lang);
   const ready = useStore((s) => s.ready);
   const initError = useStore((s) => s.initError);
+  const ctrlFlashAt = useStore((s) => s.ctrlFlashAt);
+  const [ctrlFlashOn, setCtrlFlashOn] = useState(false);
+
+  // focus-probe flash: light the window for a moment on each Ctrl/Cmd press
+  useEffect(() => {
+    if (!ctrlFlashAt) return;
+    setCtrlFlashOn(true);
+    const t = setTimeout(() => setCtrlFlashOn(false), 450);
+    return () => clearTimeout(t);
+  }, [ctrlFlashAt]);
 
   // init bridge + event pump
   useEffect(() => {
@@ -63,10 +73,23 @@ export default function App(): React.ReactElement {
       }
     };
     window.addEventListener('keydown', swallowAlt, true);
-    window.addEventListener('keyup', swallowAlt, true);    return () => {
+    window.addEventListener('keyup', swallowAlt, true);
+    // Focus probe: a bare Ctrl/Cmd keydown that reaches the page means the
+    // plugin has focus — pulse the window so the user learns to check for
+    // the flash before hitting Ctrl+Z (a missed flash = focus is in the DAW).
+    const ctrlProbe = (e: KeyboardEvent) => {
+      if (e.key !== 'Control' && e.key !== 'Meta') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (useStore.getState().settingsCapture) return;
+      useStore.getState().pulseCtrl();
+    };
+    window.addEventListener('keydown', ctrlProbe, true);
+    return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', swallowAlt, true);
       window.removeEventListener('keyup', swallowAlt, true);
+      window.removeEventListener('keydown', ctrlProbe, true);
     };
   }, []);
 
@@ -88,6 +111,9 @@ export default function App(): React.ReactElement {
 
   return (
     <div className={`app ${ready ? 'ready' : 'loading'}`} key={treeKey}>
+      <div className={ctrlFlashOn ? 'ctrl-flash on' : 'ctrl-flash'} aria-hidden="true">
+        <span className="ctrl-chip">CTRL</span>
+      </div>
       <Toolbar />
       {ready ? (
         <>

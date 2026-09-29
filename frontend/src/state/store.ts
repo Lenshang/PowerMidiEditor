@@ -65,6 +65,9 @@ interface StoreState {
   version: string;
   doc: DocumentState;
   settings: SettingsState;
+  /** timestamp of the last Ctrl/Cmd keydown seen by the plugin (focus probe) */
+  ctrlFlashAt: number;
+  pulseCtrl(): void;
   drumMap: DrumMapState;
   transport: TransportState;
   view: ViewState;
@@ -170,6 +173,7 @@ export const useStore = create<StoreState>((set, get) => ({
     snapBypass: 'shift',
     lang: 'en',
   },
+  ctrlFlashAt: 0,
   drumMap: { name: '', entries: [] } as import('../bridge/protocol').DrumMapState,
   transport: emptyTransport,
   view: {
@@ -322,6 +326,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
   toggleChordAssist() {
     set({ chordAssist: !get().chordAssist });
+  },
+
+  pulseCtrl() {
+    set({ ctrlFlashAt: Date.now() });
   },
 
   setEditCursor(ppq) {
