@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "FileIO/DrumMapIO.h"
+#include "FileIO/MidiFileIO.h"
 
 namespace pme
 {
@@ -228,6 +229,7 @@ void PowerMidiEditorAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     }
 
     // -- schedule pattern notes into the output -----------------------------
+    in.previewSnapshot = previewActive.load (std::memory_order_relaxed) ? previewSnap.get() : nullptr;
     engine.render (midi, in);
 
     // -- drum map remap: rewrite scheduled + passed-through notes so the
@@ -512,6 +514,53 @@ void PowerMidiEditorAudioProcessor::clearDrumMap()
     if (auto* po = existing.getDynamicObject())
         po->removeProperty ("drumMap");
     pf.replaceWithText (juce::JSON::toString (existing, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
+}
+
+juce::Array<juce::var> PowerMidiEditorAudioProcessor::browserFolders() const
+{
+    juce::Array<juce::var> folders;
+    if (auto* o = uiPrefsFile().existsAsFile()
+            ? juce::JSON::parse (uiPrefsFile().loadFileAsString()).getDynamicObject() : nullptr)
+        if (auto* arr = o->getProperty ("browserFolders").getArray())
+            for (const auto& v : *arr) folders.add (v);
+    return folders;
+}
+
+void PowerMidiEditorAudioProcessor::browserSetFolders (const juce::Array<juce::var>& folders)
+{
+    const auto pf = uiPrefsFile();
+    auto parsed = juce::JSON::parse (pf.existsAsFile() ? pf.loadFileAsString() : juce::String());
+    auto* po = parsed.getDynamicObject();
+    if (po == nullptr) { po = new juce::DynamicObject(); parsed = juce::var (po); }
+    po->setProperty ("browserFolders", folders);
+    pf.getParentDirectory().createDirectory();
+    pf.replaceWithText (juce::JSON::toString (parsed, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
+}
+
+void PowerMidiEditorAudioProcessor::startPreview (const juce::File& file)
+{
+    MidiFileIO::ImportResult r;
+    if (! MidiFileIO::importMidi (file, r) || r.notes.empty())
+        return;
+
+    auto snap = std::make_shared<const DocumentSnapshot> (
+        DocumentSnapshot { r.notes, r.ccs, r.pbs, {}, {}, 1 });
+
+    double len = 0.5;
+    for (const auto& n : snap->notes)  len = juce::jmax (len, n.start + n.length);
+    for (const auto& e : snap->ccs)    len = juce::jmax (len, e.ppq + 0.25);
+    for (const auto& e : snap->pbs)    len = juce::jmax (len, e.ppq + 0.25);
+
+    previewSnap = snap;
+    previewActive.store (true, std::memory_order_relaxed);
+    engine.setPreview (previewSnap.get(), len);
+}
+
+void PowerMidiEditorAudioProcessor::stopPreview()
+{
+    previewActive.store (false, std::memory_order_relaxed);
+    engine.clearPreview();
+    previewSnap.reset();
 }
 
 //==============================================================================

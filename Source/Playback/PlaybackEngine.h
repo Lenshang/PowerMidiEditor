@@ -23,6 +23,10 @@ struct EngineInputs
     bool loopValid = false;           // host loop points + looping enabled
     double loopStartPpq = 0.0;
     double loopEndPpq = 0.0;
+
+    // MIDI browser preview: when set, the engine loops this snapshot instead
+    // of the main document (independent of the host transport).
+    const DocumentSnapshot* previewSnapshot = nullptr;
 };
 
 // Schedules the document's notes against the host transport, entirely on the
@@ -48,6 +52,13 @@ public:
     void stopInternal();
     bool isInternalPlayingForUi() const { return internalFlagForUi.load (std::memory_order_relaxed); }
     double internalCursorForUi() const { return internalPpqForUi.load (std::memory_order_relaxed); }
+
+    // MIDI browser preview: loop a parsed file snapshot without touching the
+    // document. Length = musical span of the file; loops until cleared.
+    void setPreview (const DocumentSnapshot* snap, double lengthPpq);
+    void clearPreview();
+    bool isPreviewingForUi() const { return previewActive.load (std::memory_order_relaxed); }
+
     bool isAuditioningForUi() const { return auditionFlagForUi.load (std::memory_order_relaxed); }
     double auditionCursorForUi() const { return auditionPpqForUi.load (std::memory_order_relaxed); }
 
@@ -119,6 +130,14 @@ private:
     std::atomic<bool> internalFlagForUi { false };
     std::atomic<double> internalPpqForUi { 0.0 };
     std::atomic<double> auditionPpqForUi { 0.0 };
+
+    // file preview (midi browser) state — audio thread only
+    std::atomic<bool> previewActive { false };
+    bool previewRestart = false;
+    bool previewWasActive = false;
+    double previewCursor = 0.0;
+    double previewLen = 1.0;
+    std::vector<ActiveNote> previewNotes;
 
     void flushNotes (juce::MidiBuffer& out, std::vector<ActiveNote>& list, int sampleOffset);
     void playRange (juce::MidiBuffer& out, const EngineInputs& in,

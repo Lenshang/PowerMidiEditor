@@ -81,6 +81,16 @@ public:
     void saveDrumMapPrefs() const;
     void clearDrumMap();
 
+    // -- midi browser preview -------------------------------------------------
+    std::shared_ptr<const DocumentSnapshot> previewSnap;
+    std::atomic<bool> previewActive { false };
+    void startPreview (const juce::File& file);   // parse file + loop it
+    void stopPreview();
+
+    // -- midi browser folders (persisted in ui_prefs) -------------------------
+    juce::Array<juce::var> browserFolders() const;
+    void browserSetFolders (const juce::Array<juce::var>& folders);
+
     // -- internal transport (the UI's play button) ---------------------------
     void startInternalPlayback (double startPpq) { engine.startInternal (startPpq); }
     void stopInternalPlayback() { engine.stopInternal(); }

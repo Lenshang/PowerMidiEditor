@@ -603,6 +603,102 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         return okResult (juce::var (true));
     }
 
+    if (name == "browser.folders")
+    {
+        return okResult (processor.browserFolders());
+    }
+
+    if (name == "browser.addFolder")
+    {
+        auto chooser = std::make_unique<juce::FileChooser> ("Add MIDI folder",
+            juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*");
+        auto* raw = chooser.get();
+        pendingChoosers.push_back (std::move (chooser));
+        raw->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [this, raw] (const juce::FileChooser& fc)
+            {
+                auto dir = fc.getResult();
+                if (dir == juce::File{}) return;
+                auto folders = processor.browserFolders();
+                const auto newPath = dir.getFullPathName();
+                bool exists = false;
+                for (const auto& v : folders) if (v.toString() == newPath) exists = true;
+                if (! exists) folders.add (newPath);
+                processor.browserSetFolders (folders);
+            });
+        return okResult (juce::var (true));
+    }
+
+    if (name == "browser.removeFolder")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        juce::Array<juce::var> keep;
+        for (const auto& v : processor.browserFolders())
+            if (v.toString() != path) keep.add (v);
+        processor.browserSetFolders (keep);
+        return okResult (juce::var (true));
+    }
+
+    if (name == "browser.preview")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        juce::File f (path);
+        juce::uint64 noteCount = 0;
+        double len = 0.0;
+        if (f.existsAsFile())
+        {
+            MidiFileIO::ImportResult r;
+            if (MidiFileIO::importMidi (f, r))
+            {
+                noteCount = r.notes.size();
+                for (const auto& n : r.notes) len = juce::jmax (len, n.start + n.length);
+                for (const auto& e : r.ccs)    len = juce::jmax (len, e.ppq + 0.25);
+                for (const auto& e : r.pbs)    len = juce::jmax (len, e.ppq + 0.25);
+                processor.startPreview (f);
+            }
+        }
+        auto o = new juce::DynamicObject();
+        o->setProperty ("notes", (double) noteCount);
+        o->setProperty ("len", len);
+        return okResult (juce::var (o));
+    }
+
+    if (name == "browser.stopPreview")
+    {
+        processor.stopPreview();
+        return okResult (juce::var (true));
+    }
+
+    if (name == "browser.load")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        juce::File f (path);
+        if (! f.existsAsFile()) return okResult (juce::var (false));
+        processor.stopPreview();
+        MidiFileIO::ImportResult r;
+        if (! MidiFileIO::importMidi (f, r)) return okResult (juce::var (false));
+        processor.document.beginTransaction ("Load from browser");
+        processor.document.clear();
+        for (const auto& n : r.notes) processor.document.addNote (n);
+        for (const auto& e : r.ccs)  processor.document.addCC (e);
+        for (const auto& e : r.pbs)  processor.document.addPitchBend (e);
+        processor.document.commitTransaction();
+        return okResult (juce::var (true));
+    }
+
+    if (name == "browser.dragFile")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        juce::File f (path);
+        if (f.existsAsFile())
+            launchMidiDrag (f);  // drag the REAL file from its folder
+        return okResult (juce::var (true));
+    }
+
     if (name == "drummap.load")
     {
         // Parse only - the result lands as a drummapDraft event that fills the

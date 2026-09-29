@@ -118,6 +118,18 @@ void PlaybackEngine::stopInternal()
     internalFlagForUi.store (false, std::memory_order_relaxed);
 }
 
+void PlaybackEngine::setPreview (const DocumentSnapshot* snap, double lengthPpq)
+{
+    previewLen = juce::jmax (0.5, lengthPpq);
+    previewRestart = true;
+    previewActive.store (snap != nullptr, std::memory_order_relaxed);
+}
+
+void PlaybackEngine::clearPreview()
+{
+    previewActive.store (false, std::memory_order_relaxed);
+}
+
 //==============================================================================
 int PlaybackEngine::sampleOffsetFor (double ppq, double anchorPpq, const EngineInputs& in) const
 {
@@ -576,6 +588,50 @@ void PlaybackEngine::render (juce::MidiBuffer& out, const EngineInputs& in)
     else
     {
         lastTimeValid = false;
+    }
+
+    // ---------------- file preview (midi browser) ---------------------------
+    // Loops the browser file on its own transport; independent of host and
+    // internal transports. On start/switch: flush previous preview notes.
+    if (previewActive.load (std::memory_order_relaxed) && in.previewSnapshot)
+    {
+        EngineInputs pin = in;
+        pin.snapshot = in.previewSnapshot;
+        pin.loopValid = false;
+
+        if (previewRestart)
+        {
+            previewRestart = false;
+            previewWasActive = true;
+            flushNotes (out, previewNotes, 0);
+            previewCursor = 0.0;
+            resetCurveState();
+        }
+
+        const double len = juce::jmax (0.5, previewLen);
+        const double segEnd = previewCursor + blockPpq;
+        if (segEnd < len)
+        {
+            playRange (out, pin, previewCursor, segEnd, previewCursor, 0, previewNotes, false);
+            previewCursor = segEnd;
+        }
+        else
+        {
+            playRange (out, pin, previewCursor, len, previewCursor, 0, previewNotes, false);
+            const int wrapSample = sampleOffsetFor (len, previewCursor, in);
+            flushNotes (out, previewNotes, wrapSample);
+            const double remain = segEnd - len;
+            if (remain > 0.0)
+                playRange (out, pin, 0.0, remain, 0.0, wrapSample, previewNotes, false);
+            previewCursor = remain;
+        }
+    }
+    else if (previewWasActive)
+    {
+        previewWasActive = false;
+        flushNotes (out, previewNotes, 0);
+        previewCursor = 0.0;
+        resetCurvesToNeutral (out);
     }
 
     // ---------------- audition (scrub) playback -----------------------------

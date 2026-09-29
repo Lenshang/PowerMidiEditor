@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { EditOp } from '../bridge/protocol';
+import { MidiBrowserModal } from './MidiBrowserModal';
 import { runAction } from '../state/dispatch';
 import { resolveShortcuts } from '../state/shortcuts';
 import { useStore, type ToolId } from '../state/store';
@@ -58,6 +59,7 @@ export function Toolbar(): React.ReactElement {
   const drumModeActive = useStore((s) => s.drumMode);
   const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
   const [drumModalName, setDrumModalName] = useState('Custom');
+  const [browserOpen, setBrowserOpen] = useState(false);
   const [drumDraft, setDrumDraft] = useState<Array<{ i: number; o: number; c: number; name: string }>>([]);
   // while the editor is open, keep the draft in sync with the store — the
   // import file chooser completes asynchronously and lands via a drummap push
@@ -376,6 +378,9 @@ export function Toolbar(): React.ReactElement {
       }}>
         <span className="tb-text">{t('tb.open')}</span>
       </button>
+      <button className="tb-btn" title={t('browser.title')} onClick={() => setBrowserOpen(true)}>
+        <span className="tb-text">{t('browser.btn')}</span>
+      </button>
 
       <div className="toolbar-sep" />
 
@@ -488,6 +493,7 @@ export function Toolbar(): React.ReactElement {
           </div>
         </div>
       )}
+      {browserOpen && <MidiBrowserModal onClose={() => setBrowserOpen(false)} />}
     </div>
   );
 }
