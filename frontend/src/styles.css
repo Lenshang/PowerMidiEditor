@@ -855,20 +855,14 @@ body {
 }
 .dm-add:hover { filter: brightness(1.1); }
 
-/* focus probe: whole-window pulse on bare Ctrl/Cmd keydown */
-.ctrl-flash {
-  position: fixed; inset: 0; z-index: 95;
-  pointer-events: none; opacity: 0;
-}
-.ctrl-flash.on { animation: ctrl-flash-anim 450ms ease-out; }
-@keyframes ctrl-flash-anim {
-  0% { opacity: 1; box-shadow: inset 0 0 0 8px var(--accent);
-       background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  100% { opacity: 0; box-shadow: inset 0 0 0 2px var(--accent); background: transparent; }
-}
+/* focus probe: CTRL chip shown while Ctrl/Cmd is held (plugin has focus) */
 .ctrl-chip {
-  position: absolute; top: 10px; right: 14px;
-  padding: 4px 12px; border-radius: 6px;
+  position: fixed; top: 12px; right: 16px; z-index: 95;
+  padding: 5px 14px; border-radius: 7px;
   background: var(--accent); color: #fff;
-  font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.1em;
+  pointer-events: none;
+  opacity: 0; transform: translateY(-6px);
+  transition: opacity 200ms ease, transform 200ms ease;
 }
+.ctrl-chip.on { opacity: 1; transform: translateY(0); }

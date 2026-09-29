@@ -93,7 +93,7 @@ export function runAction(id: string): void {
       const ops = pasteOpsAt(snapPpq(s.editCursorPpq, s.settings, 'floor'));
       if (!hasClipboard() || ops == null) { s.setHint(t('disp.clipboardEmpty')); break; }
       s.editDoc(ops, t('disp.paste'));
-      s.setHint(`t('disp.pasted')`);
+      s.setHint(t('disp.pasted'));
       break;
     }
     case 'edit.duplicate': {
@@ -138,7 +138,7 @@ export function runAction(id: string): void {
         .map((n) => ({ op: 'update' as const, note: { id: n.id, s: Math.round(n.s / step) * step } }));
       if (ops.length === 0) { s.setHint(t('disp.alreadyOnGrid')); break; }
       s.editDoc(ops, t('disp.quantize'));
-      s.setHint(`t('disp.quantized', { count: ops.length })`);
+      s.setHint(t('disp.quantized', { count: ops.length }));
       break;
     }
     case 'edit.quantizeLength': {
@@ -156,27 +156,36 @@ export function runAction(id: string): void {
         });
       if (ops.length === 0) { s.setHint(t('disp.lengthAlreadyQuantized')); break; }
       s.editDoc(ops, t('disp.quantizeLength'));
-      s.setHint(`t('disp.quantizedLength', { count: ops.length })`);
+      s.setHint(t('disp.quantizedLength', { count: ops.length }));
       break;
     }
 
     case 'edit.legato': {
       if (s.selection.length === 0) { s.setHint(t('disp.selectFirst')); break; }
-      const sel = s.doc.notes.filter((n) => s.selection.includes(n.id));
+      // Legato chains the selection in time order: notes starting at the same
+      // moment (chords) are one group, and every note in a group extends to
+      // the start of the next group — pitch is irrelevant.
+      const sorted = s.doc.notes
+        .filter((n) => s.selection.includes(n.id))
+        .sort((a, b) => a.s - b.s || a.p - b.p);
+      const groups: Array<typeof sorted> = [];
+      for (const n of sorted) {
+        const g = groups[groups.length - 1];
+        if (g && Math.abs(g[0].s - n.s) < 1e-9) g.push(n);
+        else groups.push([n]);
+      }
       const ops: EditOp[] = [];
-      for (const n of sel) {
-        // extend to the next selected note on the same pitch
-        const next = sel
-          .filter((o) => o.id !== n.id && o.p === n.p && o.s > n.s)
-          .sort((a, b) => a.s - b.s)[0];
-        if (next && next.s > n.s + 1e-9) {
-          const l = next.s - n.s;
-          if (Math.abs(l - n.l) > 1e-9) ops.push({ op: 'update', note: { id: n.id, l } });
+      for (let i = 0; i + 1 < groups.length; i++) {
+        const nextStart = groups[i + 1][0].s;
+        for (const n of groups[i]) {
+          const l = nextStart - n.s;
+          if (l > 1e-9 && Math.abs(l - n.l) > 1e-9)
+            ops.push({ op: 'update', note: { id: n.id, l } });
         }
       }
       if (ops.length === 0) { s.setHint(t('disp.legatoNone')); break; }
       s.editDoc(ops, 'Legato');
-      s.setHint(`t('disp.legatoDone', { count: ops.length })`);
+      s.setHint(t('disp.legatoDone', { count: ops.length }));
       break;
     }
     case 'edit.humanize': {

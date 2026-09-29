@@ -18,16 +18,7 @@ export default function App(): React.ReactElement {
   const lang = useStore((s) => s.settings.lang);
   const ready = useStore((s) => s.ready);
   const initError = useStore((s) => s.initError);
-  const ctrlFlashAt = useStore((s) => s.ctrlFlashAt);
-  const [ctrlFlashOn, setCtrlFlashOn] = useState(false);
-
-  // focus-probe flash: light the window for a moment on each Ctrl/Cmd press
-  useEffect(() => {
-    if (!ctrlFlashAt) return;
-    setCtrlFlashOn(true);
-    const t = setTimeout(() => setCtrlFlashOn(false), 450);
-    return () => clearTimeout(t);
-  }, [ctrlFlashAt]);
+  const ctrlPressed = useStore((s) => s.ctrlPressed);
 
   // init bridge + event pump
   useEffect(() => {
@@ -81,10 +72,12 @@ export default function App(): React.ReactElement {
       if (e.key !== 'Control' && e.key !== 'Meta') return;
       e.preventDefault();
       e.stopPropagation();
+      if (e.type === 'keydown') useStore.getState().setCtrlPressed(true);
+      else if (e.type === 'keyup') useStore.getState().setCtrlPressed(false);
       if (useStore.getState().settingsCapture) return;
-      useStore.getState().pulseCtrl();
     };
     window.addEventListener('keydown', ctrlProbe, true);
+    window.addEventListener('keyup', ctrlProbe, true);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', swallowAlt, true);
@@ -111,9 +104,8 @@ export default function App(): React.ReactElement {
 
   return (
     <div className={`app ${ready ? 'ready' : 'loading'}`} key={treeKey}>
-      <div className={ctrlFlashOn ? 'ctrl-flash on' : 'ctrl-flash'} aria-hidden="true">
-        <span className="ctrl-chip">CTRL</span>
-      </div>
+      <div className={ctrlPressed ? 'ctrl-chip on' : 'ctrl-chip'} aria-hidden="true">CTRL</div>
+
       <Toolbar />
       {ready ? (
         <>
