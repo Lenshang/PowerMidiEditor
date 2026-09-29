@@ -53,7 +53,21 @@ export default function App(): React.ReactElement {
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Alt is the horizontal-scroll modifier: if its keydown/keyup reach the
+    // host window unconsumed, Windows enters menu mode and the next Space
+    // becomes Alt+Space (system menu) instead of Play. Swallow both phases.
+    const swallowAlt = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('keydown', swallowAlt, true);
+    window.addEventListener('keyup', swallowAlt, true);    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', swallowAlt, true);
+      window.removeEventListener('keyup', swallowAlt, true);
+    };
   }, []);
 
   // surface async/uncaught errors in the status bar instead of dying silently
