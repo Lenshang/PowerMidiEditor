@@ -28,8 +28,11 @@ public:
         double minLength = 1.0;    // drop shorter chords (ppq) after merging
     };
 
-    static std::vector<ChordEvent> analyze (const std::vector<Note>& notes,
-                                            const Params& p = {});
+    // Two overloads instead of a default argument: `const Params& p = {}`
+    // needs Params' default member initializers while the class is still
+    // incomplete, which older Clang (Xcode 15.4) rejects.
+    static std::vector<ChordEvent> analyze (const std::vector<Note>& notes);
+    static std::vector<ChordEvent> analyze (const std::vector<Note>& notes, const Params& p);
 };
 
 } // namespace pme

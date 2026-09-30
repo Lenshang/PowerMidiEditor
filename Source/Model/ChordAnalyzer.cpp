@@ -37,6 +37,11 @@ constexpr QualityTemplate kQualities[] = {
 constexpr int kNumQualities = (int) std::size (kQualities);
 } // namespace
 
+std::vector<ChordEvent> ChordAnalyzer::analyze (const std::vector<Note>& notes)
+{
+    return analyze (notes, Params{});
+}
+
 std::vector<ChordEvent> ChordAnalyzer::analyze (const std::vector<Note>& notes, const Params& p)
 {
     std::vector<ChordEvent> out;
