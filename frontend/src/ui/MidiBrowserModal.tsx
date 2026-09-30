@@ -70,8 +70,20 @@ export function MidiBrowserModal({ onClose }: { onClose: () => void }) {
   };
   const disarm = () => { dragArmed.current = null; };
 
+  // The directory chooser completes asynchronously: listen once for the
+  // browserFolders push and refresh (auto-select the first folder).
+  function getActiveFolderSafe(): string { return activeFolder; }
+
   const addFolder = () => {
-    void getBridge().invoke('browser.addFolder').then(() => refreshFolders()).catch(() => {});
+    const off = getBridge().onEvent((ev: unknown) => {
+      const e = ev as { kind?: string; browserFolders?: string[] };
+      if (e.kind !== 'browserFolders' || !e.browserFolders) return;
+      off();
+      setFolders(e.browserFolders);
+      setActiveFolder((cur) => (e.browserFolders!.includes(cur) ? cur : e.browserFolders![0] ?? ''));
+      refreshFiles(e.browserFolders!.includes(getActiveFolderSafe()) ? getActiveFolderSafe() : e.browserFolders![0] ?? '');
+    });
+    void getBridge().invoke('browser.addFolder').catch(() => off());
   };
   const removeFolder = (folder: string) => {
     void getBridge().invoke('browser.removeFolder', { path: folder }).then(() => refreshFolders()).catch(() => {});
@@ -97,7 +109,15 @@ export function MidiBrowserModal({ onClose }: { onClose: () => void }) {
                 <button className="browser-folder-btn" onClick={() => setActiveFolder(f)}
                   title={f}>{f.split(/[\\/]/).filter(Boolean).pop()}</button>
                 <button className="browser-folder-del" title={t('browser.removeFolderBtn')}
-                  onClick={() => removeFolder(f)}>✕</button>
+                  onClick={() => {
+                    removeFolder(f);
+                    const rest = folders.filter((x) => x !== f);
+                    setFolders(rest);
+                    if (activeFolder === f) {
+                      setActiveFolder(rest[0] ?? '');
+                      refreshFiles(rest[0] ?? '');
+                    }
+                  }}>✕</button>
               </div>
             ))}
           </div>

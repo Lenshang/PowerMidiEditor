@@ -625,6 +625,7 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
                 for (const auto& v : folders) if (v.toString() == newPath) exists = true;
                 if (! exists) folders.add (newPath);
                 processor.browserSetFolders (folders);
+                push ("browserFolders", folders);  // chooser is async: notify the UI
             });
         return okResult (juce::var (true));
     }
