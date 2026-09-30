@@ -18,11 +18,15 @@ struct RecEvent { bool on; int pitch, channel; float velocity; double ppq; };
 // the key was down — floored at one grid cell so a very short tap still
 // produces a visible, clickable note. With quantize on, the start is floored
 // to the grid and the end snapped to the nearest grid line.
+//
+// `pending` must live across calls (processor member): the drain timer runs
+// much faster than a held note, so a note-on is usually paired by a LATER
+// call's note-off.
 inline std::vector<Note> notesFromRecordedEvents (
-    const std::vector<RecEvent>& events, bool quantize, double grid)
+    const std::vector<RecEvent>& events, bool quantize, double grid,
+    std::map<int, std::pair<double, float>>& pending)
 {
     std::vector<Note> out;
-    std::map<int, std::pair<double, float>> pending; // (pitch*16+ch) -> {start, vel}
     grid = juce::jmax (0.03125, grid);
     for (const auto& ev : events)
     {

@@ -173,6 +173,9 @@ private:
     std::atomic<int> recRead { 0 };
     std::atomic<int> recWrite { 0 };
     RecEvent recRing[recCapacity];
+    // Pairing state for held notes: survives across drainRecordedNotes calls
+    // (the drain timer fires long before a held note's note-off arrives).
+    std::map<int, std::pair<double, float>> recPending; // (pitch*16+ch) -> {startPpq, vel}
 
     // -- A/B snapshots --------------------------------------------------------
     juce::var abSlots[2];

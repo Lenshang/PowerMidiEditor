@@ -1128,7 +1128,8 @@ static void testRecordedNotePairing()
         std::vector<RecEvent> ev = {
             { true, 60, 1, 0.9f, 1.02 }, { false, 60, 1, 0.0f, 2.37 },
         };
-        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        std::map<int, std::pair<double, float>> pending;
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25, pending);
         CHECK (notes.size() == 1);
         if (notes.size() == 1)
         {
@@ -1144,7 +1145,8 @@ static void testRecordedNotePairing()
         std::vector<RecEvent> ev = {
             { true, 60, 1, 0.9f, 1.02 }, { false, 60, 1, 0.0f, 2.90 },
         };
-        const auto notes = notesFromRecordedEvents (ev, true, 0.25);
+        std::map<int, std::pair<double, float>> pending;
+        const auto notes = notesFromRecordedEvents (ev, true, 0.25, pending);
         CHECK (notes.size() == 1);
         if (notes.size() == 1)
         {
@@ -1158,7 +1160,8 @@ static void testRecordedNotePairing()
         std::vector<RecEvent> ev = {
             { true, 62, 1, 0.8f, 2.0 }, { false, 62, 1, 0.0f, 2.05 },
         };
-        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        std::map<int, std::pair<double, float>> pending;
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25, pending);
         CHECK (notes.size() == 1);
         if (notes.size() == 1)
             CHECK (std::abs (notes[0].length - 0.25) < 1e-9);
@@ -1170,16 +1173,35 @@ static void testRecordedNotePairing()
             { true, 60, 1, 0.9f, 0.0 }, { true, 64, 1, 0.9f, 0.0 },
             { false, 64, 1, 0.0f, 1.5 }, { false, 60, 1, 0.0f, 2.0 },
         };
-        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        std::map<int, std::pair<double, float>> pending;
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25, pending);
         CHECK (notes.size() == 2);
         for (const auto& n : notes)
             CHECK (std::abs (n.length - (n.pitch == 60 ? 2.0 : 1.5)) < 1e-9);
     }
 
+    // the drain timer splits a held note across batches: the note-on must
+    // survive in `pending` until a LATER call delivers the note-off
+    {
+        std::map<int, std::pair<double, float>> pending;
+        auto first = notesFromRecordedEvents (
+            { { true, 60, 1, 0.9f, 1.0 } }, false, 0.25, pending);
+        CHECK (first.empty());
+        auto second = notesFromRecordedEvents (
+            { { false, 60, 1, 0.0f, 3.75 } }, false, 0.25, pending);
+        CHECK (second.size() == 1);
+        if (second.size() == 1)
+        {
+            CHECK (std::abs (second[0].start - 1.0) < 1e-9);
+            CHECK (std::abs (second[0].length - 2.75) < 1e-9);
+        }
+    }
+
     // an unmatched note-off is ignored
     {
         std::vector<RecEvent> ev = { { false, 60, 1, 0.0f, 1.0 } };
-        CHECK (notesFromRecordedEvents (ev, false, 0.25).empty());
+        std::map<int, std::pair<double, float>> pending;
+        CHECK (notesFromRecordedEvents (ev, false, 0.25, pending).empty());
     }
 }
 

@@ -400,7 +400,7 @@ void PowerMidiEditorAudioProcessor::drainRecordedNotes()
         return;
 
     auto notes = notesFromRecordedEvents (events, settings.autoQuantizeInput,
-                                          settings.gridPpq);
+                                          settings.gridPpq, recPending);
     if (notes.empty())
         return;
 
