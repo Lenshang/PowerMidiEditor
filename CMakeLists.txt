@@ -109,6 +109,7 @@ target_sources(PowerMidiEditor PRIVATE
     Source/PluginEditor.cpp
     Source/Bridge/UiBridge.cpp
     Source/Model/MidiClipDocument.cpp
+    Source/Model/ChordAnalyzer.cpp
     Source/Playback/PlaybackEngine.cpp
     Source/FileIO/MidiFileIO.cpp
     Source/FileIO/ExpressionMapIO.cpp
@@ -148,6 +149,7 @@ if(PME_BUILD_TESTS)
     target_sources(PmeTests PRIVATE
         Tests/PmeTests.cpp
         Source/Model/MidiClipDocument.cpp
+        Source/Model/ChordAnalyzer.cpp
         Source/Playback/PlaybackEngine.cpp
         Source/FileIO/MidiFileIO.cpp
         Source/FileIO/ExpressionMapIO.cpp

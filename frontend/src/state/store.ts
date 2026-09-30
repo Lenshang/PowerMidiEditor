@@ -169,7 +169,7 @@ export const useStore = create<StoreState>((set, get) => ({
   doc: { revision: 0, notes: [], ccs: [], pbs: [], chords: [], articulations: [] },
   settings: {
     theme: 'dark', shortcuts: {}, gridPpq: 0.25, snap: true,
-    triplet: false, lengthQuantize: 'grid', autoQuantizeInput: false,
+    triplet: false, lengthQuantize: 'grid', autoQuantizeInput: false, browserAutoChords: true,
     snapBypass: 'shift',
     lang: 'en',
   },

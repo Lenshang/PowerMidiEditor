@@ -5,6 +5,7 @@
 #include "../Source/Model/MidiClipDocument.h"
 #include "../Source/Playback/PlaybackEngine.h"
 #include "../Source/FileIO/MidiFileIO.h"
+#include "../Source/Model/ChordAnalyzer.h"
 #include "../Source/FileIO/ExpressionMapIO.h"
 #include "../Source/FileIO/DrumMapIO.h"
 #include "../Source/FileIO/SelectionSnapshot.hpp"
@@ -215,6 +216,179 @@ static void testAudition()
     eng.stopAudition();
 }
 
+// Rule-based chord detection for the browser load flow: known triads must be
+// named correctly, passing tones must not break the bar, and non-chord bars
+// must split the run.
+static void testChordAnalyzer()
+{
+    auto note = [] (int pitch, double start, double length)
+    {
+        Note n; n.pitch = pitch; n.start = start; n.length = length; return n;
+    };
+    std::vector<Note> notes;
+
+    // bar 1: C major (C4 E4 G4 full bar) + a short passing D — must stay Cmaj
+    for (const int p : { 60, 64, 67 }) notes.push_back (note (p, 0.0, 4.0));
+    notes.push_back (note (62, 2.0, 0.25));
+    // bar 2: A minor (A3 C4 E4)
+    for (const int p : { 57, 60, 64 }) notes.push_back (note (p, 4.0, 4.0));
+    // bar 3: G7 (G3 B3 D4 F4)
+    for (const int p : { 55, 59, 62, 65 }) notes.push_back (note (p, 8.0, 4.0));
+    // bar 4: melody only (single line) — no chord, splits the run
+    notes.push_back (note (72, 12.0, 4.0));
+    // bar 5: C major again — new chord event after the gap
+    for (const int p : { 60, 64, 67 }) notes.push_back (note (p, 16.0, 4.0));
+
+    const auto chords = ChordAnalyzer::analyze (notes);
+
+    // bars 1-3 detected, bar 4 (melody) skipped, bar 5 starts a new run
+    CHECK (chords.size() == 4);
+    if (chords.size() == 4)
+    {
+        CHECK (chords[0].root == 0 && chords[0].quality == 0);   // C maj
+        CHECK (chords[0].start == 0.0 && chords[0].length == 4.0);
+        CHECK (chords[1].root == 9 && chords[1].quality == 1);   // A min
+        CHECK (chords[1].start == 4.0 && chords[1].length == 4.0);
+        CHECK (chords[2].root == 7 && chords[2].quality == 4);   // G 7
+        CHECK (chords[2].start == 8.0 && chords[2].length == 4.0);
+        CHECK (chords[3].root == 0 && chords[3].quality == 0);   // C maj again
+        CHECK (chords[3].start == 16.0 && chords[3].length == 4.0);
+    }
+
+    // two-bar Am run merges into one event
+    std::vector<Note> run;
+    for (const int p : { 57, 60, 64 }) run.push_back (note (p, 0.0, 8.0));
+    const auto merged = ChordAnalyzer::analyze (run);
+    CHECK (merged.size() == 1 && merged[0].length == 8.0 && merged[0].root == 9);
+}
+
+// Files are commonly NOT 960 TPQ (480 is the DAW norm): the importer must
+// scale ticks by the file's own division, not the internal 960.
+static void testImportTicksPerQuarter()
+{
+    juce::MidiFile mf;
+    mf.setTicksPerQuarterNote (480);
+    juce::MidiMessageSequence seq;
+    seq.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 60), 480);
+    seq.addEvent (juce::MidiMessage::noteOn (1, 62, 0.8f), 1920);   // bar 2
+    seq.addEvent (juce::MidiMessage::noteOff (1, 62), 2400);
+    mf.addTrack (seq);
+    juce::MemoryOutputStream mb;
+    mf.writeTo (mb, 0);
+
+    MidiFileIO::ImportResult r;
+    CHECK (MidiFileIO::importMidiFromMemory (mb.getData(), mb.getDataSize(), r));
+    CHECK (r.notes.size() == 2);
+    if (r.notes.size() == 2)
+    {
+        std::sort (r.notes.begin(), r.notes.end(),
+            [] (const Note& a, const Note& b) { return a.start < b.start; });
+        CHECK (std::abs (r.notes[0].start - 0.0) < 1e-9);
+        CHECK (std::abs (r.notes[0].length - 1.0) < 1e-9);
+        CHECK (std::abs (r.notes[1].start - 4.0) < 1e-9);   // was 2.0 with the hardcoded 960
+    }
+}
+
+// The extended quality palette (sus2/add9/5/6/m6/m7b5/dim7/7sus4) must be
+// recognized when its notes are present, and must not steal bars that belong
+// to the original triads/sevenths.
+static void testChordAnalyzerExtended()
+{
+    auto note = [] (int pitch, double start, double length)
+    {
+        Note n; n.pitch = pitch; n.start = start; n.length = length; return n;
+    };
+
+    {   // Csus2 (C D G) with C in the bass — sus2, not Gsus4 (same pcs)
+        std::vector<Note> notes;
+        for (const auto& [p, len] : { std::pair { 60, 4.0 }, std::pair { 62, 4.0 }, std::pair { 67, 4.0 } })
+            notes.push_back (note (p, 0.0, len));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 8);
+    }
+    {   // Cadd9 (C E G D, all equal) — add9, not maj
+        std::vector<Note> notes;
+        for (const int p : { 60, 64, 67, 74 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 9);
+    }
+    {   // C5 power (only C + G) — 5, not maj (maj lacks the third)
+        std::vector<Note> notes;
+        notes.push_back (note (48, 0.0, 4.0));
+        notes.push_back (note (67, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 10);
+    }
+    {   // C6 (C E G A) with C in the bass — 6, not Am7 (same pcs)
+        std::vector<Note> notes;
+        for (const int p : { 48, 64, 67, 69 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 11);
+    }
+    {   // Bm7b5 (B D F A)
+        std::vector<Note> notes;
+        for (const int p : { 59, 62, 65, 69 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 11 && c[0].quality == 13);
+    }
+    {   // Cdim7 (C Eb Gb A) with C in the bass — symmetric pcs, bass decides
+        std::vector<Note> notes;
+        for (const int p : { 48, 63, 66, 69 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 14);
+    }
+    {   // plain Cmaj bar must NOT be stolen by 5 / 6 / add9
+        std::vector<Note> notes;
+        for (const int p : { 60, 64, 67 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 0);
+    }
+    {   // C E G B (all four) = Cmaj7, not plain maj — the full-presence bonus
+        std::vector<Note> notes;
+        for (const int p : { 60, 64, 67, 71 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 0 && c[0].quality == 5);
+    }
+    {   // plain G7 bar must NOT be stolen by 7sus4 / dim7 / m7b5
+        std::vector<Note> notes;
+        for (const int p : { 55, 59, 62, 65 })
+            notes.push_back (note (p, 0.0, 4.0));
+        const auto c = ChordAnalyzer::analyze (notes);
+        CHECK (c.size() == 1 && c[0].root == 7 && c[0].quality == 4);
+    }
+}
+
+// Beat-level detection: a chord change in the MIDDLE of a bar must be
+// caught (bar-level segmentation merged it into one wrong chord).
+static void testChordAnalyzerMidBarChange()
+{
+    auto note = [] (int pitch, double start, double length)
+    {
+        Note n; n.pitch = pitch; n.start = start; n.length = length; return n;
+    };
+    std::vector<Note> notes;
+    // beats 1-2: C major, beats 3-4: G7 — one bar, two chords
+    for (const int p : { 60, 64, 67 }) notes.push_back (note (p, 0.0, 2.0));
+    for (const int p : { 55, 59, 62, 65 }) notes.push_back (note (p, 2.0, 2.0));
+
+    const auto chords = ChordAnalyzer::analyze (notes);
+    CHECK (chords.size() == 2);
+    if (chords.size() == 2)
+    {
+        CHECK (chords[0].root == 0 && chords[0].quality == 0);
+        CHECK (std::abs (chords[0].start - 0.0) < 1e-9 && std::abs (chords[0].length - 2.0) < 1e-9);
+        CHECK (chords[1].root == 7 && chords[1].quality == 4);
+        CHECK (std::abs (chords[1].start - 2.0) < 1e-9 && std::abs (chords[1].length - 2.0) < 1e-9);
+    }
+}
+
 static void testPreviewAndPanic()
 {
     PlaybackEngine eng;
@@ -229,6 +403,167 @@ static void testPreviewAndPanic()
     out.clear();
     eng.render (out, makeInputs (empty, 128, false, 0.0, 128));
     CHECK (countOff (out, 72) == 1);
+}
+
+static int countCc (const juce::MidiBuffer& m, int cc)
+{
+    int n = 0;
+    for (const auto i : m)
+        if (i.getMessage().isController() && i.getMessage().getControllerNumber() == cc)
+            ++n;
+    return n;
+}
+
+// Switching or stopping the file preview must kill EVERYTHING the file left
+// sounding downstream — tracked note-offs alone are not enough when the file
+// pressed the sustain pedal (CC64) mid-way: notes held by the pedal keep
+// ringing. Switch/stop must emit pedal-off + All Notes Off + All Sound Off.
+static void testPreviewSwitchStopsSound()
+{
+    // file A: one long note + sustain pedal pressed mid-note
+    MidiClipDocument docA;
+    Note na; na.pitch = 60; na.start = 0.0; na.length = 2.0;
+    ControllerEvent ca; ca.cc = 64; ca.ppq = 0.5; ca.value = 127;
+    docA.beginTransaction ("a");
+    docA.addNote (na);
+    docA.addCC (ca);
+    docA.commitTransaction();
+    auto snapA = docA.getSnapshot();
+
+    // file B: one short note
+    MidiClipDocument docB;
+    Note nb; nb.pitch = 72; nb.start = 0.0; nb.length = 0.5;
+    docB.beginTransaction ("b");
+    docB.addNote (nb);
+    docB.commitTransaction();
+    auto snapB = docB.getSnapshot();
+
+    DocumentSnapshot empty;
+    PlaybackEngine eng;
+    juce::MidiBuffer out;
+
+    // 48000 Hz at 120 bpm → 1/24000 ppq per sample → 12000 samples = 0.5 ppq
+    eng.setPreview (snapA.get(), 2.5);
+    { EngineInputs in = makeInputs (empty, 12000, false, 0.0, 0);       in.previewSnapshot = snapA.get(); eng.render (out, in); }
+    CHECK (countOn (out, 60) == 1);                    // A: note starts
+
+    out.clear();
+    { EngineInputs in = makeInputs (empty, 12000, false, 0.0, 12000);   in.previewSnapshot = snapA.get(); eng.render (out, in); }
+    CHECK (countCc (out, 64) == 1);                    // A: pedal down at ppq 0.5
+
+    // SWITCH to file B while A's note is sounding with the pedal down
+    out.clear();
+    eng.setPreview (snapB.get(), 1.0);
+    { EngineInputs in = makeInputs (empty, 12000, false, 0.0, 24000);   in.previewSnapshot = snapB.get(); eng.render (out, in); }
+    CHECK (countOff (out, 60) == 1);                   // tracked note-off for A
+    CHECK (countCc (out, 64) >= 1);                    // pedal released
+    CHECK (countCc (out, 123) == 16);                  // All Notes Off, all channels
+    CHECK (countCc (out, 120) == 16);                  // All Sound Off, all channels
+    CHECK (countOn (out, 72) == 1);                    // B starts after the kill
+
+    // STOP the preview
+    out.clear();
+    eng.clearPreview();
+    { EngineInputs in = makeInputs (empty, 12000, false, 0.0, 36000);   in.previewSnapshot = nullptr; eng.render (out, in); }
+    CHECK (countCc (out, 123) == 16 && countCc (out, 120) == 16);
+    CHECK (countCc (out, 64) >= 1);                    // pedal released again
+}
+
+// The browser must read the file's own tempo (earliest FF51 set-tempo meta)
+// so the "file tempo" preview mode knows what to play at.
+static void testImportTempo()
+{
+    auto usPerQ = [] (double bpm) { return (int) juce::roundToInt (60.0e6 / bpm); };
+    auto tempoMeta = [usPerQ] (double bpm)
+    {
+        const int us = usPerQ (bpm);
+        return juce::MidiMessage (0xFF, 0x51, 0x03,
+                                  (us >> 16) & 0xFF, (us >> 8) & 0xFF, us & 0xFF);
+    };
+    juce::MidiFile mf;
+    mf.setTicksPerQuarterNote (480);
+    juce::MidiMessageSequence seq;
+    seq.addEvent (tempoMeta (138.0));
+    seq.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+    seq.addEvent (juce::MidiMessage::noteOff (1, 60), 480);
+    mf.addTrack (seq);
+
+    juce::MemoryOutputStream mb;
+    mf.writeTo (mb, 0);
+    MidiFileIO::ImportResult r;
+    CHECK (MidiFileIO::importMidiFromMemory (mb.getData(), mb.getDataSize(), r));
+    CHECK (std::abs (r.tempoBpm - 138.0) < 0.5);
+    CHECK (r.notes.size() == 1);
+
+    // a file without any tempo meta defaults to 120
+    juce::MidiFile mf2;
+    mf2.setTicksPerQuarterNote (480);
+    juce::MidiMessageSequence seq2;
+    seq2.addEvent (juce::MidiMessage::noteOn (1, 60, 0.8f), 0);
+    seq2.addEvent (juce::MidiMessage::noteOff (1, 60), 480);
+    mf2.addTrack (seq2);
+    juce::MemoryOutputStream mb2;
+    mf2.writeTo (mb2, 0);
+    MidiFileIO::ImportResult r2;
+    CHECK (MidiFileIO::importMidiFromMemory (mb2.getData(), mb2.getDataSize(), r2));
+    CHECK (std::abs (r2.tempoBpm - 120.0) < 0.01);
+}
+
+// Pause must freeze the cursor and silence everything; the file-tempo mode
+// must advance the ppq cursor at fileBpm/projectBpm instead of 1:1.
+static void testPreviewPauseAndRate()
+{
+    MidiClipDocument doc;
+    Note n; n.pitch = 60; n.start = 0.0; n.length = 8.0;
+    doc.beginTransaction ("p");
+    doc.addNote (n);
+    doc.commitTransaction();
+    auto snap = doc.getSnapshot();
+    DocumentSnapshot empty;
+    PlaybackEngine eng;
+
+    const auto renderBlocks = [&] (juce::MidiBuffer& out, int blocks, int samplesPerBlock)
+    {
+        for (int i = 0; i < blocks; ++i)
+        {
+            out.clear();
+            EngineInputs in = makeInputs (empty, samplesPerBlock, false, 0.0, 0);
+            in.previewSnapshot = snap.get();
+            eng.render (out, in);
+        }
+    };
+
+    // ---- pause freezes, resume continues ----------------------------------
+    eng.setPreview (snap.get(), 8.0);
+    juce::MidiBuffer out;
+    renderBlocks (out, 2, 12000);                 // 1.0 ppq played
+    const double posBefore = eng.previewPosForUi();
+    CHECK (posBefore > 0.9 && posBefore < 1.1);
+
+    eng.setPreviewPaused (true);
+    out.clear();
+    renderBlocks (out, 1, 12000);                 // first paused block: silence
+    CHECK (countCc (out, 123) >= 1 && countCc (out, 120) >= 1);  // silenced
+    renderBlocks (out, 3, 12000);                 // paused: cursor must hold
+    CHECK (std::abs (eng.previewPosForUi() - posBefore) < 1e-6);
+
+    eng.setPreviewPaused (false);
+    renderBlocks (out, 1, 12000);
+    CHECK (eng.previewPosForUi() > posBefore + 0.4);             // resumed
+
+    // ---- file-tempo rate: 240bpm file at 120bpm host = 2x advance ---------
+    eng.clearPreview();
+    eng.setPreviewUseFileTempo (true);
+    eng.setPreview (snap.get(), 64.0, 240.0);     // setPreview resets pause
+    renderBlocks (out, 3, 12000);                 // 3 blocks = 1.5 ppq @1x
+    const double posFast = eng.previewPosForUi();
+    CHECK (posFast > 2.9 && posFast < 3.1);       // 2x → 3.0 ppq
+
+    // project-tempo mode: back to 1x
+    eng.setPreviewUseFileTempo (false);
+    const double pos1x = eng.previewPosForUi();
+    renderBlocks (out, 2, 12000);
+    CHECK (std::abs (eng.previewPosForUi() - (pos1x + 1.0)) < 0.01);
 }
 
 static void testControllerAndPitchBend()
@@ -790,6 +1125,13 @@ int main()
     testEngineLoopWrap();
     testAudition();
     testPreviewAndPanic();
+    testPreviewSwitchStopsSound();
+    testImportTempo();
+    testChordAnalyzer();
+    testChordAnalyzerExtended();
+    testChordAnalyzerMidBarChange();
+    testImportTicksPerQuarter();
+    testPreviewPauseAndRate();
     testControllerAndPitchBend();
     testCurveInterpolation();
     testInternalTransport();

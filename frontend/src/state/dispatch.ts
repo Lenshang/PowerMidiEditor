@@ -5,6 +5,7 @@ import { getBridge } from '../bridge/bridge';
 import { gridStepPpq, snapPpq, useStore } from './store';
 import { t } from '../i18n';
 import { copySelected, hasClipboard, pasteOpsAt } from './clipboard';
+import { chordPcsAt } from '../pianoroll/render';
 import type { EditOp } from '../bridge/protocol';
 
 const HZOOM = 1.25;
@@ -276,4 +277,45 @@ export function quantizeSelection(_alsoLength: boolean): void {
     if (qStart !== n.s) ops.push({ op: 'update', note: { id: n.id, s: qStart } });
   }
   if (ops.length > 0) s.editDoc(ops, t('disp.quantize'));
+}
+
+/** Transpose every note (or the selection, if any) to the nearest chord tone
+ *  of the chord sounding at its start. Notes outside the chord track and
+ *  already-fitting notes are left untouched; one undoable transaction. */
+export function fitToChords(): void {
+  const s = useStore.getState();
+  if (s.doc.chords.length === 0) {
+    s.setHint(t('disp.noChords'));
+    return;
+  }
+  const selected = s.selection.length > 0;
+  let changed = 0, matched = 0;
+  const ops: EditOp[] = [];
+  for (const n of s.doc.notes) {
+    if (selected && !s.selection.includes(n.id)) continue;
+    const pcs = chordPcsAt(s.doc.chords, n.s);
+    if (!pcs || pcs.size === 0) continue;
+    matched++;
+    const pc = ((n.p % 12) + 12) % 12;
+    // nearest chord tone as a pitch-class delta in [-6, +5]; ties go downward
+    let delta = 0, bestAbs = 13;
+    for (const tone of pcs) {
+      const d = (((tone - pc + 6 + 12) % 12) + 12) % 12 - 6;
+      const a = Math.abs(d);
+      if (a < bestAbs || (a === bestAbs && d < delta)) { delta = d; bestAbs = a; }
+    }
+    if (delta === 0) continue;
+    let p = n.p + delta;
+    if (p < 0 || p > 127) {
+      const alt = delta > 0 ? delta - 12 : delta + 12;
+      p = n.p + alt;
+      if (p < 0 || p > 127) continue;  // cannot fit inside the pitch range
+    }
+    ops.push({ op: 'update', note: { id: n.id, p } });
+    changed++;
+  }
+  if (ops.length > 0) s.editDoc(ops, t('disp.fitChords'));
+  s.setHint(changed > 0
+    ? t('disp.chordsApplied', { count: changed })
+    : matched > 0 ? t('disp.alreadyFit') : t('disp.noChordHere'));
 }

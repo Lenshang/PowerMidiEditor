@@ -25,18 +25,21 @@ PowerMidiEditorAudioProcessor::PowerMidiEditorAudioProcessor()
     // A fresh instance starts empty — the demo content is for the browser dev
     // mock only, not for real sessions.
     loadUiPrefs();
-    if (auto* o = uiPrefsFile().existsAsFile()
-            ? juce::JSON::parse (uiPrefsFile().loadFileAsString()).getDynamicObject()
-            : nullptr)
+    if (uiPrefsFile().existsAsFile())
     {
-        if (auto* dm = o->getProperty ("drumMap").getDynamicObject())
+        // Keep the parsed var alive — see browserFolders().
+        const auto parsed = juce::JSON::parse (uiPrefsFile().loadFileAsString());
+        if (auto* o = parsed.getDynamicObject())
         {
-            drumMap.mapName = dm->getProperty ("drumMapName").toString();
-            if (auto* arr = dm->getProperty ("drumMapEntries").getArray())
-                for (const auto& v : *arr)
-                    if (auto* eo = v.getDynamicObject())
-                        drumMap.entries.push_back ({ eo->getProperty ("name").toString(),
-                            (int) eo->getProperty ("i"), (int) eo->getProperty ("o"), (int) eo->getProperty ("c") });
+            if (auto* dm = o->getProperty ("drumMap").getDynamicObject())
+            {
+                drumMap.mapName = dm->getProperty ("drumMapName").toString();
+                if (auto* arr = dm->getProperty ("drumMapEntries").getArray())
+                    for (const auto& v : *arr)
+                        if (auto* eo = v.getDynamicObject())
+                            drumMap.entries.push_back ({ eo->getProperty ("name").toString(),
+                                (int) eo->getProperty ("i"), (int) eo->getProperty ("o"), (int) eo->getProperty ("c") });
+            }
         }
     }
 }
@@ -229,7 +232,7 @@ void PowerMidiEditorAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     }
 
     // -- schedule pattern notes into the output -----------------------------
-    in.previewSnapshot = previewActive.load (std::memory_order_relaxed) ? previewSnap.get() : nullptr;
+    in.previewSnapshot = previewActive.load (std::memory_order_relaxed) ? previewSnap.load().get() : nullptr;
     engine.render (midi, in);
 
     // -- drum map remap: rewrite scheduled + passed-through notes so the
@@ -461,6 +464,8 @@ void PowerMidiEditorAudioProcessor::updateSettingsFromUi (const juce::var& v)
         settings.lengthQuantize = o->getProperty ("lengthQuantize").toString();
     if (o->hasProperty ("autoQuantizeInput"))
         settings.autoQuantizeInput = (bool) o->getProperty ("autoQuantizeInput");
+    if (o->hasProperty ("browserAutoChords"))
+        settings.browserAutoChords = (bool) o->getProperty ("browserAutoChords");
     if (o->hasProperty ("snapBypass"))
         settings.snapBypass = o->getProperty ("snapBypass").toString();
     if (o->hasProperty ("lang"))
@@ -518,9 +523,13 @@ void PowerMidiEditorAudioProcessor::clearDrumMap()
 
 juce::Array<juce::var> PowerMidiEditorAudioProcessor::browserFolders() const
 {
+    // The parsed var must be kept alive: JSON::parse(...).getDynamicObject()
+    // on a temporary leaves the object freed before getProperty runs.
     juce::Array<juce::var> folders;
-    if (auto* o = uiPrefsFile().existsAsFile()
-            ? juce::JSON::parse (uiPrefsFile().loadFileAsString()).getDynamicObject() : nullptr)
+    if (! uiPrefsFile().existsAsFile())
+        return folders;
+    const auto parsed = juce::JSON::parse (uiPrefsFile().loadFileAsString());
+    if (auto* o = parsed.getDynamicObject())
         if (auto* arr = o->getProperty ("browserFolders").getArray())
             for (const auto& v : *arr) folders.add (v);
     return folders;
@@ -537,7 +546,7 @@ void PowerMidiEditorAudioProcessor::browserSetFolders (const juce::Array<juce::v
     pf.replaceWithText (juce::JSON::toString (parsed, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
 }
 
-void PowerMidiEditorAudioProcessor::startPreview (const juce::File& file)
+void PowerMidiEditorAudioProcessor::startPreview (const juce::File& file, bool useFileTempo)
 {
     MidiFileIO::ImportResult r;
     if (! MidiFileIO::importMidi (file, r) || r.notes.empty())
@@ -551,16 +560,22 @@ void PowerMidiEditorAudioProcessor::startPreview (const juce::File& file)
     for (const auto& e : snap->ccs)    len = juce::jmax (len, e.ppq + 0.25);
     for (const auto& e : snap->pbs)    len = juce::jmax (len, e.ppq + 0.25);
 
-    previewSnap = snap;
+    // Retire (don't free) the previous snapshot: the audio thread may still be
+    // rendering it this block. The retired pointer is dropped on the next
+    // start/stop, long after the audio thread has moved on.
+    previewRetired = previewSnap.load();
+    previewSnap.store (std::move (snap));
     previewActive.store (true, std::memory_order_relaxed);
-    engine.setPreview (previewSnap.get(), len);
+    engine.setPreviewUseFileTempo (useFileTempo);
+    engine.setPreview (previewSnap.load().get(), len, r.tempoBpm);
 }
 
 void PowerMidiEditorAudioProcessor::stopPreview()
 {
     previewActive.store (false, std::memory_order_relaxed);
     engine.clearPreview();
-    previewSnap.reset();
+    previewRetired = previewSnap.load();
+    previewSnap.store (nullptr);
 }
 
 //==============================================================================
@@ -573,13 +588,20 @@ juce::File PowerMidiEditorAudioProcessor::uiPrefsFile()
 
 void PowerMidiEditorAudioProcessor::saveUiPrefs() const
 {
-    auto o = new juce::DynamicObject();
+    // Read-modify-write: the file also holds keys owned by other features
+    // (midi library folders / last folder) that must survive a theme,
+    // language or shortcut save.
+    auto parsed = juce::JSON::parse (uiPrefsFile().existsAsFile()
+        ? uiPrefsFile().loadFileAsString() : juce::String());
+    auto* o = parsed.getDynamicObject();
+    if (o == nullptr) { o = new juce::DynamicObject(); parsed = juce::var (o); }
     o->setProperty ("theme", settings.theme);
     o->setProperty ("lang", settings.lang);
     o->setProperty ("snapBypass", settings.snapBypass);
+    o->setProperty ("browserAutoChords", settings.browserAutoChords);
     if (! settings.shortcuts.isVoid())
         o->setProperty ("shortcuts", settings.shortcuts);
-    const auto json = juce::JSON::toString (juce::var (o), juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine));
+    const auto json = juce::JSON::toString (parsed, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine));
     uiPrefsFile().getParentDirectory().createDirectory();
     uiPrefsFile().replaceWithText (json);
 }
@@ -596,6 +618,7 @@ void PowerMidiEditorAudioProcessor::loadUiPrefs()
     settings.theme = propStr (*o, "theme", settings.theme.toRawUTF8());
     settings.lang = propStr (*o, "lang", settings.lang.toRawUTF8());
     settings.snapBypass = propStr (*o, "snapBypass", settings.snapBypass.toRawUTF8());
+    settings.browserAutoChords = propBool (*o, "browserAutoChords", settings.browserAutoChords);
     auto sc = o->getProperty ("shortcuts");
     if (! sc.isVoid())
         settings.shortcuts = sc;

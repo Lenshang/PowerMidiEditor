@@ -18,6 +18,7 @@ public:
         std::vector<Note> notes;
         std::vector<ControllerEvent> ccs;
         std::vector<PitchBendEvent> pbs;
+        double tempoBpm = 120.0;             // earliest tempo meta in the file
     };
 
     static bool exportMidi (const DocumentSnapshot& snapshot, const juce::File& file);

@@ -20,6 +20,7 @@ struct PluginSettings
     bool autoQuantizeInput = false;
     juce::String snapBypass = "shift";    // modifier bypassing snap: shift|alt|ctrl|none
     juce::String lang = "en";             // UI language: en|zhHans|zhHant|ja
+    bool browserAutoChords = true;        // midi browser load: analyze the chord track
 
     juce::var toVar() const
     {
@@ -36,6 +37,7 @@ struct PluginSettings
         o->setProperty ("autoQuantizeInput", autoQuantizeInput);
         o->setProperty ("snapBypass", snapBypass);
         o->setProperty ("lang", lang);
+        o->setProperty ("browserAutoChords", browserAutoChords);
         return juce::var (o);
     }
 
@@ -55,6 +57,7 @@ struct PluginSettings
         autoQuantizeInput = propBool (*o, "autoQuantizeInput", false);
         snapBypass = propStr (*o, "snapBypass", "shift");
         lang = propStr (*o, "lang", "en");
+        browserAutoChords = propBool (*o, "browserAutoChords", true);
     }
 };
 

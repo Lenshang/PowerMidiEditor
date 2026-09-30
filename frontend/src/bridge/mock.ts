@@ -20,7 +20,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   snap: true,
   triplet: false,
   lengthQuantize: 'grid',
-  autoQuantizeInput: false,
+  autoQuantizeInput: false, browserAutoChords: true,
   snapBypass: 'shift',
   lang: 'en',
 };
@@ -364,7 +364,8 @@ export function createMockBridge(): Bridge {
 
   const bridge: Bridge = {
     mode: 'mock',
-    async invoke<T = unknown>(name: string, payload?: unknown) {
+    async invoke<T = unknown>(name: string, payload?: unknown,
+        _opts?: { timeoutMs?: number }) {
       const h = handlers[name];
       if (!h) throw new Error(`mock: unknown invoke '${name}'`);
       return h(payload) as T;

@@ -82,10 +82,18 @@ public:
     void clearDrumMap();
 
     // -- midi browser preview -------------------------------------------------
-    std::shared_ptr<const DocumentSnapshot> previewSnap;
+    // Atomic: startPreview (message thread) swaps it while the audio thread
+    // dereferences it once per block. The retired slot keeps a replaced
+    // snapshot alive until the NEXT swap so the audio thread can never free
+    // the snapshot it is currently rendering.
+    std::atomic<std::shared_ptr<const DocumentSnapshot>> previewSnap;
+    std::shared_ptr<const DocumentSnapshot> previewRetired;
     std::atomic<bool> previewActive { false };
-    void startPreview (const juce::File& file);   // parse file + loop it
+    void startPreview (const juce::File& file, bool useFileTempo = false); // parse file + loop it
     void stopPreview();
+    void setPreviewPaused (bool paused) { engine.setPreviewPaused (paused); }
+    bool isPreviewPausedForUi() const { return engine.isPreviewPausedForUi(); }
+    double previewPosForUi() const { return engine.previewPosForUi(); }
 
     // -- midi browser folders (persisted in ui_prefs) -------------------------
     juce::Array<juce::var> browserFolders() const;

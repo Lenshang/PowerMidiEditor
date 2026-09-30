@@ -11,16 +11,26 @@ const BLACK = [1, 3, 6, 8, 10];
 
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-/** Chord quality table (name + semitone intervals from the root). */
+/** Chord quality table (name + semitone intervals from the root).
+ *  The order is an index shared with the backend ChordAnalyzer template
+ *  table — append only, never reorder. */
 export const CHORD_QUALITIES: Array<{ label: string; intervals: number[] }> = [
-  { label: 'maj', intervals: [0, 4, 7] },
-  { label: 'min', intervals: [0, 3, 7] },
-  { label: 'dim', intervals: [0, 3, 6] },
-  { label: 'aug', intervals: [0, 4, 8] },
-  { label: '7', intervals: [0, 4, 7, 10] },
-  { label: 'maj7', intervals: [0, 4, 7, 11] },
-  { label: 'min7', intervals: [0, 3, 7, 10] },
-  { label: 'sus4', intervals: [0, 5, 7] },
+  { label: 'maj', intervals: [0, 4, 7] },       // 0
+  { label: 'min', intervals: [0, 3, 7] },       // 1
+  { label: 'dim', intervals: [0, 3, 6] },       // 2
+  { label: 'aug', intervals: [0, 4, 8] },       // 3
+  { label: '7', intervals: [0, 4, 7, 10] },     // 4
+  { label: 'maj7', intervals: [0, 4, 7, 11] },  // 5
+  { label: 'min7', intervals: [0, 3, 7, 10] },  // 6
+  { label: 'sus4', intervals: [0, 5, 7] },      // 7
+  { label: 'sus2', intervals: [0, 2, 7] },      // 8
+  { label: 'add9', intervals: [0, 4, 7, 14] },  // 9
+  { label: '5', intervals: [0, 7] },            // 10
+  { label: '6', intervals: [0, 4, 7, 9] },      // 11
+  { label: 'm6', intervals: [0, 3, 7, 9] },     // 12
+  { label: 'm7b5', intervals: [0, 3, 6, 10] },  // 13
+  { label: 'dim7', intervals: [0, 3, 6, 9] },   // 14
+  { label: '7sus4', intervals: [0, 5, 7, 10] }, // 15
 ];
 
 export function chordName(c: { r: number; q: number }): string {

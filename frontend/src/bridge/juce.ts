@@ -35,7 +35,8 @@ export function createJuceBridge(): Bridge {
     }
   });
 
-  async function invoke<T = unknown>(name: string, payload?: unknown): Promise<T> {
+  async function invoke<T = unknown>(name: string, payload?: unknown,
+      opts?: { timeoutMs?: number }): Promise<T> {
     const resultId = nextPromiseId++;
     const reply = new Promise<unknown>((resolve) => pending.set(resultId, resolve));
     // JUCE routes the call by the `name` field to the registered native
@@ -44,13 +45,14 @@ export function createJuceBridge(): Bridge {
     backend.emitEvent('__juce__invoke', { name: 'invoke', params: [name, payload ?? null], resultId });
 
     // The plugin is on the same thread; a lost reply would deadlock the UI,
-    // so guard with a timeout and surface a clear error instead.
+    // so guard with a timeout and surface a clear error instead. Slow calls
+    // (e.g. scanning a large network folder) can raise the limit per call.
     const result = await Promise.race([
       reply,
       new Promise<never>((_, reject) =>
         setTimeout(() => {
           if (pending.delete(resultId)) reject(new Error(`invoke('${name}') timed out`));
-        }, 5000),
+        }, opts?.timeoutMs ?? 5000),
       ),
     ]);
     const r = result as { ok?: boolean; data?: unknown; error?: string };

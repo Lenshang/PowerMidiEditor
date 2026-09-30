@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { EditOp } from '../bridge/protocol';
 import { MidiBrowserModal } from './MidiBrowserModal';
-import { runAction } from '../state/dispatch';
+import { runAction, fitToChords } from '../state/dispatch';
 import { resolveShortcuts } from '../state/shortcuts';
 import { useStore, type ToolId } from '../state/store';
 import { t } from '../i18n';
@@ -198,6 +198,9 @@ export function Toolbar(): React.ReactElement {
       </button>
       <button className="tb-btn" title={t('tb.legatoTitle')} onClick={() => runAction('edit.legato')}>
         <span className="tb-text">{t('tb.legato')}</span>
+      </button>
+      <button className="tb-btn" title={t('tb.fitChordsTitle')} onClick={fitToChords}>
+        <span className="tb-text">{t('tb.fitChords')}</span>
       </button>
 
       <div className="toolbar-sep" />

@@ -54,10 +54,16 @@ public:
     double internalCursorForUi() const { return internalPpqForUi.load (std::memory_order_relaxed); }
 
     // MIDI browser preview: loop a parsed file snapshot without touching the
-    // document. Length = musical span of the file; loops until cleared.
-    void setPreview (const DocumentSnapshot* snap, double lengthPpq);
+    // document. Length = musical span of the file; loops until cleared. The
+    // position is in ppq, so the tempo mode (project bpm vs the file's own)
+    // can be switched live mid-preview without moving the playhead.
+    void setPreview (const DocumentSnapshot* snap, double lengthPpq, double fileBpm = 120.0);
     void clearPreview();
+    void setPreviewPaused (bool paused) { previewPaused.store (paused, std::memory_order_relaxed); }
+    void setPreviewUseFileTempo (bool useFile) { previewUseFileTempo.store (useFile, std::memory_order_relaxed); }
     bool isPreviewingForUi() const { return previewActive.load (std::memory_order_relaxed); }
+    bool isPreviewPausedForUi() const { return previewPaused.load (std::memory_order_relaxed); }
+    double previewPosForUi() const { return previewPosUi.load (std::memory_order_relaxed); }
 
     bool isAuditioningForUi() const { return auditionFlagForUi.load (std::memory_order_relaxed); }
     double auditionCursorForUi() const { return auditionPpqForUi.load (std::memory_order_relaxed); }
@@ -133,13 +139,22 @@ private:
 
     // file preview (midi browser) state — audio thread only
     std::atomic<bool> previewActive { false };
+    std::atomic<bool> previewPaused { false };
+    std::atomic<bool> previewUseFileTempo { false };
+    std::atomic<double> previewPosUi { 0.0 };   // ppq cursor for the UI meter
     bool previewRestart = false;
     bool previewWasActive = false;
+    bool previewPauseFlushed = false;
+    double previewFileBpm = 120.0;
     double previewCursor = 0.0;
     double previewLen = 1.0;
     std::vector<ActiveNote> previewNotes;
 
     void flushNotes (juce::MidiBuffer& out, std::vector<ActiveNote>& list, int sampleOffset);
+    // Belt and braces for preview stop/switch: release the sustain pedal, then
+    // All Notes Off + All Sound Off on every channel — tracked note-offs alone
+    // cannot stop notes held by a pedal that the file pressed mid-way.
+    void allNotesOffDownstream (juce::MidiBuffer& out, int sampleOffset);
     void playRange (juce::MidiBuffer& out, const EngineInputs& in,
                     double fromPpq, double toPpq, double anchorPpq, int blockStartSample,
                     std::vector<ActiveNote>& active, bool chase);

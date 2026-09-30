@@ -23,12 +23,12 @@ export function StatusBar(): React.ReactElement {
       <span className="sb-sep" />
       <span>{transport.tempo.toFixed(1)} BPM · {transport.sigNum}/{transport.sigDen}</span>
       <span className="sb-sep" />
-      <span className="sb-mono" title="{t('sb.monitorTitle')}">
+      <span className="sb-mono" title={t('sb.monitorTitle')}>
         {t('lane.pb')} {transport.lastPb >= 0 ? transport.lastPb : '—'}
         {transport.lastCcNumber >= 0 ? ` · CC${transport.lastCcNumber} ${transport.lastCcValue}` : ''}
       </span>
       <span className="sb-sep" />
-      <span>{(doc.notes ?? []).length} {t('sb.note')}{selection.length > 0 ? ` · t('sb.notesSelected', { count: selection.length })` : ''}</span>
+      <span>{(doc.notes ?? []).length} {t('sb.note')}{selection.length > 0 ? ` · ${t('sb.notesSelected', { count: selection.length })}` : ''}</span>
       <span className="sb-sep" />
       {recordArmed && <span className="sb-rec">● {t('sb.recordArmed')}</span>}
       {hint && <span className="sb-hint">{hint}</span>}

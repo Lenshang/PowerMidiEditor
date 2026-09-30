@@ -118,16 +118,21 @@ void PlaybackEngine::stopInternal()
     internalFlagForUi.store (false, std::memory_order_relaxed);
 }
 
-void PlaybackEngine::setPreview (const DocumentSnapshot* snap, double lengthPpq)
+void PlaybackEngine::setPreview (const DocumentSnapshot* snap, double lengthPpq, double fileBpm)
 {
     previewLen = juce::jmax (0.5, lengthPpq);
+    previewFileBpm = juce::jmax (20.0, fileBpm);
     previewRestart = true;
+    previewPauseFlushed = false;
+    previewPaused.store (false, std::memory_order_relaxed);
+    previewPosUi.store (0.0, std::memory_order_relaxed);
     previewActive.store (snap != nullptr, std::memory_order_relaxed);
 }
 
 void PlaybackEngine::clearPreview()
 {
     previewActive.store (false, std::memory_order_relaxed);
+    previewPosUi.store (0.0, std::memory_order_relaxed);
 }
 
 //==============================================================================
@@ -144,6 +149,24 @@ void PlaybackEngine::flushNotes (juce::MidiBuffer& out, std::vector<ActiveNote>&
     for (const auto& a : list)
         out.addEvent (juce::MidiMessage::noteOff (a.channel, a.pitch), sampleOffset);
     list.clear();
+}
+
+void PlaybackEngine::allNotesOffDownstream (juce::MidiBuffer& out, int sampleOffset)
+{
+    // A held sustain pedal keeps notes ringing through plain note-offs, and
+    // some sources ignore All Notes Off while the pedal is down — so release
+    // the pedal first, then All Notes Off, then All Sound Off, every channel.
+    for (int ch = 1; ch <= 16; ++ch)
+    {
+        out.addEvent (juce::MidiMessage::controllerEvent (ch, 64, 0), sampleOffset);
+        out.addEvent (juce::MidiMessage::allNotesOff (ch), sampleOffset);
+        out.addEvent (juce::MidiMessage::allSoundOff (ch), sampleOffset);
+    }
+    // the pedal is now up downstream; keep the curve tracking in sync so
+    // resetCurvesToNeutral() does not re-send it later
+    for (int ch = 0; ch < 16; ++ch)
+        if (lastCcSent[ch][64] > 0)
+            lastCcSent[ch][64] = 0;
 }
 
 // Schedule everything in [fromPpq, toPpq) onto out.
@@ -417,6 +440,7 @@ void PlaybackEngine::render (juce::MidiBuffer& out, const EngineInputs& in)
             out.addEvent (juce::MidiMessage::noteOff (p.channel, p.pitch), 0);
         previews.clear();
         previewNoteOns.clear();
+        allNotesOffDownstream (out, 0);
         auditionActive = false;
     }
 
@@ -604,32 +628,59 @@ void PlaybackEngine::render (juce::MidiBuffer& out, const EngineInputs& in)
             previewRestart = false;
             previewWasActive = true;
             flushNotes (out, previewNotes, 0);
+            // switching files: kill everything the previous file left sounding
+            // (incl. a sustain pedal held mid-file) before the new one starts
+            allNotesOffDownstream (out, 0);
+            resetCurvesToNeutral (out);
             previewCursor = 0.0;
             resetCurveState();
         }
 
-        const double len = juce::jmax (0.5, previewLen);
-        const double segEnd = previewCursor + blockPpq;
-        if (segEnd < len)
+        if (previewPaused.load (std::memory_order_relaxed))
         {
-            playRange (out, pin, previewCursor, segEnd, previewCursor, 0, previewNotes, false);
-            previewCursor = segEnd;
+            // hold the cursor and silence everything once; the UI keeps the
+            // progress bar parked at the pause point
+            if (! previewPauseFlushed)
+            {
+                previewPauseFlushed = true;
+                flushNotes (out, previewNotes, 0);
+                allNotesOffDownstream (out, 0);
+                resetCurvesToNeutral (out);
+            }
         }
         else
         {
-            playRange (out, pin, previewCursor, len, previewCursor, 0, previewNotes, false);
-            const int wrapSample = sampleOffsetFor (len, previewCursor, in);
-            flushNotes (out, previewNotes, wrapSample);
-            const double remain = segEnd - len;
-            if (remain > 0.0)
-                playRange (out, pin, 0.0, remain, 0.0, wrapSample, previewNotes, false);
-            previewCursor = remain;
+            previewPauseFlushed = false;
+            // project-tempo mode advances at the host's speed; file-tempo mode
+            // scales by the file's own bpm relative to the host's
+            const double rate = previewUseFileTempo.load (std::memory_order_relaxed)
+                ? previewFileBpm / juce::jmax (20.0, in.tempo) : 1.0;
+            const double step = blockPpq * rate;
+            const double len = juce::jmax (0.5, previewLen);
+            const double segEnd = previewCursor + step;
+            if (segEnd < len)
+            {
+                playRange (out, pin, previewCursor, segEnd, previewCursor, 0, previewNotes, false);
+                previewCursor = segEnd;
+            }
+            else
+            {
+                playRange (out, pin, previewCursor, len, previewCursor, 0, previewNotes, false);
+                const int wrapSample = sampleOffsetFor (len, previewCursor, in);
+                flushNotes (out, previewNotes, wrapSample);
+                const double remain = segEnd - len;
+                if (remain > 0.0)
+                    playRange (out, pin, 0.0, remain, 0.0, wrapSample, previewNotes, false);
+                previewCursor = remain;
+            }
         }
+        previewPosUi.store (previewCursor, std::memory_order_relaxed);
     }
     else if (previewWasActive)
     {
         previewWasActive = false;
         flushNotes (out, previewNotes, 0);
+        allNotesOffDownstream (out, 0);
         previewCursor = 0.0;
         resetCurvesToNeutral (out);
     }

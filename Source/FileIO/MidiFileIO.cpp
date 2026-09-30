@@ -221,6 +221,36 @@ bool MidiFileIO::importFromStream (juce::InputStream& stream, ImportResult& out)
         return false; // SMPTE timing not supported
     const double scale = 1.0 / ticksPerQ;
 
+    // Original tempo: the earliest set-tempo meta (FF 51) in the file, so the
+    // browser can preview at the kit's intended speed (default 120 otherwise).
+    double tempoBpm = -1.0;
+    for (int track = 0; track < mf.getNumTracks() && tempoBpm < 0.0; ++track)
+    {
+        auto* seq = mf.getTrack (track);
+        if (seq == nullptr)
+            continue;
+        double bestTick = -1.0;
+        for (int i = 0; i < seq->getNumEvents(); ++i)
+        {
+            auto* holder = seq->getEventPointer (i);
+            if (holder == nullptr)
+                continue;
+            const auto& msg = holder->message;
+            if (! msg.isTempoMetaEvent())
+                continue;
+            const auto tick = msg.getTimeStamp();
+            if (bestTick >= 0.0 && tick >= bestTick)
+                continue;
+            const auto* data = msg.getMetaEventData();
+            const int usPerQuarter = (data[0] << 16) | (data[1] << 8) | data[2];
+            if (usPerQuarter <= 0)
+                continue;
+            tempoBpm = 60.0e6 / (double) usPerQuarter;
+            bestTick = tick;
+        }
+    }
+    out.tempoBpm = tempoBpm > 0.0 ? tempoBpm : 120.0;
+
     struct Pending { double start; float velocity; int channel; };
     std::map<std::pair<int, int>, Pending> pendingNotes; // (channel, pitch) -> start
     std::map<int, juce::String> lyricsByTick;            // SMF FF05 (and FF01) lyrics
@@ -246,7 +276,9 @@ bool MidiFileIO::importFromStream (juce::InputStream& stream, ImportResult& out)
             if (holder == nullptr)
                 continue;
             const auto msg = holder->message;
-            const double t = tickToQuarter ((int) holder->message.getTimeStamp());
+            // scale by the FILE's division — files are commonly 480 or 96
+            // TPQ, and assuming the internal 960 squashed their timeline
+            const double t = (double) holder->message.getTimeStamp() * scale;
 
             if (msg.isMetaEvent())
             {

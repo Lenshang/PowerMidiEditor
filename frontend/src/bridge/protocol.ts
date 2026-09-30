@@ -131,6 +131,8 @@ export interface SettingsState {
   snapBypass: string;
   /** UI language ('en' | 'zhHans' | 'zhHant' | 'ja') */
   lang: string;
+  /** midi browser load: analyze the chord track from the loaded notes */
+  browserAutoChords: boolean;
 }
 
 export interface DrumMapState {

@@ -1,4 +1,5 @@
 #include "UiBridge.h"
+#include "../Model/ChordAnalyzer.h"
 #include "../FileIO/ExpressionMapIO.h"
 #include "../FileIO/DrumMapIO.h"
 #include "../FileIO/SelectionSnapshot.hpp"
@@ -252,7 +253,69 @@ UiBridge::UiBridge (PowerMidiEditorAudioProcessor& p)
 
 UiBridge::~UiBridge()
 {
+    // join a running browser-load parse before members die; cancelling also
+    // stops the job from triggering the async update into a dead object
+    loadJob.reset();
     stopTimer();
+}
+
+//==============================================================================
+// Browser load job: parse on the worker, apply + notify on the message thread.
+void UiBridge::LoadJob::run()
+{
+    MidiFileIO::ImportResult r;
+    const bool ok = MidiFileIO::importMidi (file, r);
+    if (threadShouldExit())
+        return;
+    {
+        const juce::ScopedLock sl (resultLock);
+        result = std::move (r);
+        resultOk = ok;
+    }
+    bridge.triggerAsyncUpdate();
+}
+
+void UiBridge::startBrowserLoad (const juce::File& f)
+{
+    loadInFlight.store (true, std::memory_order_relaxed);
+    if (loadJob != nullptr && loadJob->isThreadRunning())
+        loadJob->waitForThreadToExit (-1);
+    loadJob = std::make_unique<LoadJob> (*this);
+    loadJob->file = f;
+    loadJob->startThread();
+}
+
+void UiBridge::handleAsyncUpdate()
+{
+    if (loadJob == nullptr)
+        return;
+    MidiFileIO::ImportResult r;
+    bool ok = false;
+    {
+        const juce::ScopedLock sl (loadJob->resultLock);
+        r = std::move (loadJob->result);
+        ok = loadJob->resultOk;
+    }
+    loadInFlight.store (false, std::memory_order_relaxed);
+
+    if (ok)
+    {
+        processor.document.beginTransaction ("Load from browser");
+        processor.document.clear();
+        for (const auto& n : r.notes) processor.document.addNote (n);
+        for (const auto& e : r.ccs)  processor.document.addCC (e);
+        for (const auto& e : r.pbs)  processor.document.addPitchBend (e);
+        // fill the guidance chord track from the loaded notes (rule-based
+        // template matching; toggle lives in the settings panel)
+        if (processor.settings.browserAutoChords)
+            for (const auto& c : ChordAnalyzer::analyze (r.notes))
+                processor.document.addChord (c);
+        processor.document.commitTransaction();
+    }
+    auto o = new juce::DynamicObject();
+    o->setProperty ("ok", ok);
+    o->setProperty ("path", loadJob->file.getFullPathName());
+    push ("browserLoaded", juce::var (o));
 }
 
 void UiBridge::loadResourcesFromZip()
@@ -657,21 +720,50 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
 
     if (name == "browser.listFiles")
     {
+        // Payload {folder} scans just that folder (recursive, so kit
+        // subfolders show up too); without it, all registered folders are
+        // scanned (legacy behaviour / first paint).
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto onlyFolder = payload != nullptr ? propStr (*payload, "folder") : juce::String();
+
         juce::Array<juce::var> files;
-        for (const auto& v : processor.browserFolders())
+        auto scanRoot = [&files] (const juce::File& root)
         {
-            juce::File dir (v.toString());
-            if (! dir.isDirectory()) continue;
+            const auto rootPath = root.getFullPathName();
             juce::Array<juce::File> found;
-            dir.findChildFiles (found, juce::File::findFiles, false, "*.mid;*.midi;*.MID;*.MIDI");
+            root.findChildFiles (found, juce::File::findFiles, true, "*.mid;*.midi;*.MID;*.MIDI");
             for (const auto& f : found)
             {
+                if (files.size() >= 2000) return;  // keep scans responsive on huge trees
                 auto fo = new juce::DynamicObject();
                 fo->setProperty ("name", f.getFileName());
-                fo->setProperty ("folder", dir.getFullPathName());
+                auto rel = f.getFullPathName();
+                if (! rel.equalsIgnoreCase (rootPath))
+                {
+                    rel = rel.fromFirstOccurrenceOf (rootPath, false, true);
+                    while (rel.startsWithChar ('/') || rel.startsWithChar ('\\'))
+                        rel = rel.substring (1);
+                    fo->setProperty ("rel", rel.replaceCharacter ('\\', '/'));
+                }
+                fo->setProperty ("folder", rootPath);
                 fo->setProperty ("path", f.getFullPathName());
                 fo->setProperty ("size", (double) f.getSize());
+                fo->setProperty ("mtime", (double) f.getLastModificationTime().toMilliseconds());
                 files.add (juce::var (fo));
+            }
+        };
+
+        if (onlyFolder.isNotEmpty())
+        {
+            const juce::File dir (onlyFolder);
+            if (dir.isDirectory()) scanRoot (dir);
+        }
+        else
+        {
+            for (const auto& v : processor.browserFolders())
+            {
+                const juce::File dir (v.toString());
+                if (dir.isDirectory()) scanRoot (dir);
             }
         }
         auto o = new juce::DynamicObject();
@@ -679,29 +771,139 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         return okResult (juce::var (o));
     }
 
+    if (name == "browser.probe")
+    {
+        // {paths: [...]} (max 64 per call) → per-file note count + length in
+        // 4/4 bars. The UI calls this lazily in chunks so big network folders
+        // stay responsive.
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto* paths = payload != nullptr ? payload->getProperty ("paths").getArray() : nullptr;
+        juce::Array<juce::var> out;
+        if (paths != nullptr)
+        {
+            const int n = juce::jmin (paths->size(), 64);
+            for (int i = 0; i < n; ++i)
+            {
+                const juce::File f (paths->getReference (i).toString());
+                auto fo = new juce::DynamicObject();
+                fo->setProperty ("path", f.getFullPathName());
+                int notes = 0;
+                double bars = 0.0;
+                bool ok = false;
+                if (f.existsAsFile())
+                {
+                    MidiFileIO::ImportResult r;
+                    if (MidiFileIO::importMidi (f, r))
+                    {
+                        ok = true;
+                        notes = (int) r.notes.size();
+                        for (const auto& nn : r.notes)
+                            bars = juce::jmax (bars, nn.start + nn.length);
+                        bars = bars / 4.0;  // quarter notes → 4/4 bars
+                    }
+                }
+                fo->setProperty ("ok", ok);
+                fo->setProperty ("notes", notes);
+                fo->setProperty ("bars", bars);
+                out.add (juce::var (fo));
+            }
+        }
+        auto o = new juce::DynamicObject();
+        o->setProperty ("info", out);
+        return okResult (juce::var (o));
+    }
+
+    if (name == "browser.lastFolder")
+    {
+        juce::String last;
+        const auto pf = processor.uiPrefsFile();
+        if (pf.existsAsFile())
+        {
+            // Keep the parsed var alive — see browserFolders().
+            const auto parsed = juce::JSON::parse (pf.loadFileAsString());
+            if (auto* o = parsed.getDynamicObject())
+                last = o->getProperty ("browserLast").toString();
+        }
+        auto o = new juce::DynamicObject();
+        o->setProperty ("path", last);
+        return okResult (juce::var (o));
+    }
+
+    if (name == "browser.setLastFolder")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        const auto pf = processor.uiPrefsFile();
+        auto parsed = juce::JSON::parse (pf.existsAsFile() ? pf.loadFileAsString() : juce::String());
+        auto* po = parsed.getDynamicObject();
+        if (po == nullptr) { po = new juce::DynamicObject(); parsed = juce::var (po); }
+        po->setProperty ("browserLast", path);
+        pf.getParentDirectory().createDirectory();
+        pf.replaceWithText (juce::JSON::toString (parsed, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine)));
+        return okResult (juce::var (true));
+    }
+
     if (name == "browser.preview")
     {
         auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
         const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
+        const bool useFileTempo = payload != nullptr && (bool) payload->getProperty ("useFileTempo");
         juce::File f (path);
-        juce::uint64 noteCount = 0;
+        bool imported = false;
         double len = 0.0;
+        double fileBpm = 120.0;
+        juce::Array<juce::var> thumb;   // piano-roll minimap notes {p,s,l}
         if (f.existsAsFile())
         {
             MidiFileIO::ImportResult r;
             if (MidiFileIO::importMidi (f, r))
             {
-                noteCount = r.notes.size();
-                for (const auto& n : r.notes) len = juce::jmax (len, n.start + n.length);
-                for (const auto& e : r.ccs)    len = juce::jmax (len, e.ppq + 0.25);
-                for (const auto& e : r.pbs)    len = juce::jmax (len, e.ppq + 0.25);
-                processor.startPreview (f);
+                imported = true;
+                fileBpm = r.tempoBpm;
+                processor.startPreview (f, useFileTempo);
+                const int n = juce::jmin ((int) r.notes.size(), 2000);
+                for (int i = 0; i < n; ++i)
+                {
+                    auto fo = new juce::DynamicObject();
+                    fo->setProperty ("p", r.notes[i].pitch);
+                    fo->setProperty ("s", r.notes[i].start);
+                    fo->setProperty ("l", r.notes[i].length);
+                    thumb.add (juce::var (fo));
+                    len = juce::jmax (len, r.notes[i].start + r.notes[i].length);
+                }
+                for (const auto& e : r.ccs) len = juce::jmax (len, e.ppq + 0.25);
+                for (const auto& e : r.pbs) len = juce::jmax (len, e.ppq + 0.25);
             }
         }
         auto o = new juce::DynamicObject();
-        o->setProperty ("notes", (double) noteCount);
+        o->setProperty ("ok", imported);
+        o->setProperty ("fileBpm", fileBpm);
         o->setProperty ("len", len);
+        o->setProperty ("notes", thumb);
         return okResult (juce::var (o));
+    }
+
+    if (name == "browser.previewControl")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const auto action = payload != nullptr ? propStr (*payload, "action") : juce::String();
+        if (action == "pause")
+            processor.setPreviewPaused (true);
+        else if (action == "resume")
+            processor.setPreviewPaused (false);
+        else
+            return errorResult ("browser.previewControl: unknown action");
+        return okResult (juce::var (true));
+    }
+
+    if (name == "browser.setPreviewTempoMode")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        const bool useFileTempo = payload != nullptr && (bool) payload->getProperty ("useFileTempo");
+        // The preview cursor is in ppq, so this switches speed live without
+        // moving the playhead.
+        processor.getEngine().setPreviewUseFileTempo (useFileTempo);
+        return okResult (juce::var (true));
     }
 
     if (name == "browser.stopPreview")
@@ -712,19 +914,16 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
 
     if (name == "browser.load")
     {
+        // Starts a background job and returns immediately — parsing a large
+        // file on this (message) thread would freeze the whole plugin window.
+        // The UI learns about completion via the "browserLoaded" push.
         auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
         const auto path = payload != nullptr ? propStr (*payload, "path") : juce::String();
         juce::File f (path);
         if (! f.existsAsFile()) return okResult (juce::var (false));
+        if (loadInFlight.load()) return okResult (juce::var (false));  // one at a time
         processor.stopPreview();
-        MidiFileIO::ImportResult r;
-        if (! MidiFileIO::importMidi (f, r)) return okResult (juce::var (false));
-        processor.document.beginTransaction ("Load from browser");
-        processor.document.clear();
-        for (const auto& n : r.notes) processor.document.addNote (n);
-        for (const auto& e : r.ccs)  processor.document.addCC (e);
-        for (const auto& e : r.pbs)  processor.document.addPitchBend (e);
-        processor.document.commitTransaction();
+        startBrowserLoad (f);
         return okResult (juce::var (true));
     }
 
@@ -1329,6 +1528,19 @@ void UiBridge::pushMidiIn()
         push ("midi", juce::var (events));
 }
 
+void UiBridge::pushPreview()
+{
+    const bool active = processor.previewActive.load (std::memory_order_relaxed);
+    if (! active && ! lastPreviewActive)
+        return; // idle: nothing to report (one final push on stop)
+    lastPreviewActive = active;
+    auto o = new juce::DynamicObject();
+    o->setProperty ("active", active);
+    o->setProperty ("paused", active && processor.isPreviewPausedForUi());
+    o->setProperty ("pos", active ? processor.previewPosForUi() : 0.0);
+    push ("preview", juce::var (o));
+}
+
 void UiBridge::timerCallback()
 {
     processor.drainRecordedNotes();
@@ -1341,6 +1553,7 @@ void UiBridge::timerCallback()
     if (processor.settingsRevision.load() != lastSettingsRevision)
         pushSettings();
     pushTransport();
+    pushPreview();
     pushMidiIn();
 }
 

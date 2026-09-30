@@ -2,6 +2,7 @@
 
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "../PluginProcessor.h"
+#include "../FileIO/MidiFileIO.h"
 
 namespace pme
 {
@@ -15,7 +16,7 @@ namespace pme
 //
 // The frontend runs either from the embedded asset zip or (PME dev builds)
 // straight from the Vite dev server.
-class UiBridge : private juce::Timer
+class UiBridge : private juce::Timer, private juce::AsyncUpdater
 {
 public:
     explicit UiBridge (PowerMidiEditorAudioProcessor& processor);
@@ -32,10 +33,12 @@ private:
     juce::var handleInvoke (const juce::Array<juce::var>& args);
 
     void timerCallback() override;
+    void handleAsyncUpdate() override;
     void pushDoc();
     void pushDrumMap();
     void pushSettings();
     void pushTransport();
+    void pushPreview();
     void pushMidiIn();
     void push (const char* kind, const juce::var& payload);
     void pushToast (const juce::String& message);
@@ -69,6 +72,29 @@ private:
 
     std::vector<std::unique_ptr<juce::FileChooser>> pendingChoosers;
 
+    // Browser "load" runs on a background thread (large MIDI files would
+    // freeze the message thread — i.e. the whole plugin window — otherwise).
+    // The job parses off-thread, then hands the result back through the
+    // AsyncUpdater; the document is applied on the message thread and the UI
+    // is notified with a "browserLoaded" push.
+    class LoadJob : public juce::Thread
+    {
+    public:
+        explicit LoadJob (UiBridge& owner) : juce::Thread ("pme browser load"), bridge (owner) {}
+        // joins run() before the data members it writes are destroyed
+        // (base-class destructors run after member destructors)
+        ~LoadJob() override { stopThread (-1); }
+        void run() override;
+        UiBridge& bridge;
+        juce::File file;
+        MidiFileIO::ImportResult result;
+        bool resultOk = false;
+        juce::CriticalSection resultLock;
+    };
+    void startBrowserLoad (const juce::File& f);
+    std::unique_ptr<LoadJob> loadJob;
+    std::atomic<bool> loadInFlight { false };
+
     double lastTransportPpq = -1.0;
     bool lastTransportPpqValid = false;
     bool lastTransportLoopValid = false;
@@ -82,6 +108,7 @@ private:
     int lastPb = -1;
     int lastCcNumber = -1;
     int lastCcValue = -1;
+    bool lastPreviewActive = false;
 
     JUCE_DECLARE_NON_COPYABLE (UiBridge)
 };

@@ -151,6 +151,17 @@ export function SettingsPanel(): React.ReactElement | null {
             <p className="settings-note">
               {t('set.snapBypassNote')}
             </p>
+            <div className="settings-row">
+              <span className="settings-label">{t('set.autoChords')}</span>
+              <button className={`mini-btn ${settings.browserAutoChords ? 'on' : ''}`}
+                title={t('set.autoChordsNote')}
+                onClick={() => updateSettings({ browserAutoChords: !settings.browserAutoChords })}>
+                {settings.browserAutoChords ? t('set.on') : t('set.off')}
+              </button>
+            </div>
+            <p className="settings-note">
+              {t('set.autoChordsNote')}
+            </p>
           </div>
         )}
 
