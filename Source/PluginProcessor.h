@@ -82,13 +82,35 @@ public:
     void clearDrumMap();
 
     // -- midi browser preview -------------------------------------------------
-    // Atomic: startPreview (message thread) swaps it while the audio thread
-    // dereferences it once per block. The retired slot keeps a replaced
-    // snapshot alive until the NEXT swap so the audio thread can never free
-    // the snapshot it is currently rendering.
-    std::atomic<std::shared_ptr<const DocumentSnapshot>> previewSnap;
+    // std::atomic<std::shared_ptr> is unavailable in AppleClang libc++
+    // (shared_ptr is not trivially copyable), so the slot is a plain
+    // shared_ptr guarded by a spinlock — same pattern as MidiClipDocument.
+    // startPreview (message thread) swaps it while the audio thread copies the
+    // pointer out once per block. The retired slot keeps a replaced snapshot
+    // alive until the NEXT swap so the audio thread can never free the
+    // snapshot it is currently rendering.
+    mutable juce::SpinLock previewLock;
+    std::shared_ptr<const DocumentSnapshot> previewSnap;
     std::shared_ptr<const DocumentSnapshot> previewRetired;
     std::atomic<bool> previewActive { false };
+
+    std::shared_ptr<const DocumentSnapshot> currentPreviewSnap() const
+    {
+        const juce::SpinLock::ScopedLockType sl (previewLock);
+        return previewSnap;
+    }
+    void swapPreviewSnap (std::shared_ptr<const DocumentSnapshot> s)
+    {
+        const juce::SpinLock::ScopedLockType sl (previewLock);
+        previewRetired = std::move (previewSnap);
+        previewSnap = std::move (s);
+    }
+    void clearPreviewSnap()
+    {
+        const juce::SpinLock::ScopedLockType sl (previewLock);
+        previewRetired = std::move (previewSnap);
+        previewSnap = nullptr;
+    }
     void startPreview (const juce::File& file, bool useFileTempo = false); // parse file + loop it
     void stopPreview();
     void setPreviewPaused (bool paused) { engine.setPreviewPaused (paused); }

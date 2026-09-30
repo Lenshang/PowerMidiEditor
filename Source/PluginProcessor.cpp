@@ -232,7 +232,7 @@ void PowerMidiEditorAudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     }
 
     // -- schedule pattern notes into the output -----------------------------
-    in.previewSnapshot = previewActive.load (std::memory_order_relaxed) ? previewSnap.load().get() : nullptr;
+    in.previewSnapshot = previewActive.load (std::memory_order_relaxed) ? currentPreviewSnap().get() : nullptr;
     engine.render (midi, in);
 
     // -- drum map remap: rewrite scheduled + passed-through notes so the
@@ -563,19 +563,17 @@ void PowerMidiEditorAudioProcessor::startPreview (const juce::File& file, bool u
     // Retire (don't free) the previous snapshot: the audio thread may still be
     // rendering it this block. The retired pointer is dropped on the next
     // start/stop, long after the audio thread has moved on.
-    previewRetired = previewSnap.load();
-    previewSnap.store (std::move (snap));
+    swapPreviewSnap (std::move (snap));
     previewActive.store (true, std::memory_order_relaxed);
     engine.setPreviewUseFileTempo (useFileTempo);
-    engine.setPreview (previewSnap.load().get(), len, r.tempoBpm);
+    engine.setPreview (currentPreviewSnap().get(), len, r.tempoBpm);
 }
 
 void PowerMidiEditorAudioProcessor::stopPreview()
 {
     previewActive.store (false, std::memory_order_relaxed);
     engine.clearPreview();
-    previewRetired = previewSnap.load();
-    previewSnap.store (nullptr);
+    clearPreviewSnap();
 }
 
 //==============================================================================
