@@ -610,6 +610,20 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
 
     if (name == "browser.addFolder")
     {
+        // Optional payload {path} adds directly (used by tests/automation);
+        // without it the native directory chooser opens.
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        if (payload != nullptr)
+        {
+            const auto dirPath = propStr (*payload, "path");
+            auto folders = processor.browserFolders();
+            bool exists = false;
+            for (const auto& v : folders) if (v.toString() == dirPath) exists = true;
+            if (! exists) folders.add (dirPath);
+            processor.browserSetFolders (folders);
+            push ("browserFolders", folders);
+            return okResult (juce::var (true));
+        }
         auto chooser = std::make_unique<juce::FileChooser> ("Add MIDI folder",
             juce::File::getSpecialLocation (juce::File::userDocumentsDirectory), "*");
         auto* raw = chooser.get();
@@ -639,6 +653,30 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
             if (v.toString() != path) keep.add (v);
         processor.browserSetFolders (keep);
         return okResult (juce::var (true));
+    }
+
+    if (name == "browser.listFiles")
+    {
+        juce::Array<juce::var> files;
+        for (const auto& v : processor.browserFolders())
+        {
+            juce::File dir (v.toString());
+            if (! dir.isDirectory()) continue;
+            juce::Array<juce::File> found;
+            dir.findChildFiles (found, juce::File::findFiles, false, "*.mid;*.midi;*.MID;*.MIDI");
+            for (const auto& f : found)
+            {
+                auto fo = new juce::DynamicObject();
+                fo->setProperty ("name", f.getFileName());
+                fo->setProperty ("folder", dir.getFullPathName());
+                fo->setProperty ("path", f.getFullPathName());
+                fo->setProperty ("size", (double) f.getSize());
+                files.add (juce::var (fo));
+            }
+        }
+        auto o = new juce::DynamicObject();
+        o->setProperty ("files", files);
+        return okResult (juce::var (o));
     }
 
     if (name == "browser.preview")
