@@ -199,6 +199,13 @@ export function Toolbar(): React.ReactElement {
       <button className="tb-btn" title={t('tb.legatoTitle')} onClick={() => runAction('edit.legato')}>
         <span className="tb-text">{t('tb.legato')}</span>
       </button>
+      <button className="tb-btn" title={t('tb.detectChordsTitle')} onClick={() => {
+        const st = useStore.getState();
+        if (st.doc.notes.length === 0) return;
+        void getBridge().invoke('chords.detect', { ids: st.selection }).catch(() => {});
+      }}>
+        <span className="tb-text">{t('tb.detectChords')}</span>
+      </button>
       <button className="tb-btn" title={t('tb.fitChordsTitle')} onClick={fitToChords}>
         <span className="tb-text">{t('tb.fitChords')}</span>
       </button>

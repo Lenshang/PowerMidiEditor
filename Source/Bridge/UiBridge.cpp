@@ -6,6 +6,8 @@
 #include "../Util/VarUtil.h"
 #include "../FileIO/MidiFileIO.h"
 #include <BinaryData.h>
+#include <algorithm>
+#include <limits>
 
 namespace pme
 {
@@ -559,6 +561,64 @@ juce::var UiBridge::handleInvoke (const juce::Array<juce::var>& args)
         processor.document.clear();
         processor.document.commitTransaction();
         return okResult (juce::var ((double) processor.document.getRevision()));
+    }
+
+    // Chord detection over the selection's time region (or the whole document
+    // when nothing is selected): the same rule-based analyzer the MIDI browser
+    // uses fills the guidance chord track. Undoable; replaces the chords that
+    // overlap the region.
+    if (name == "chords.detect")
+    {
+        auto* payload = args.size() > 1 ? args[1].getDynamicObject() : nullptr;
+        std::vector<juce::uint32> selIds;
+        if (payload != nullptr)
+            if (auto* arr = payload->getProperty ("ids").getArray())
+                for (auto& iv : *arr)
+                    selIds.push_back ((juce::uint32) (double) iv);
+
+        const auto snap = processor.document.getSnapshot();
+        bool full = selIds.empty();
+        double rStart = 0.0, rEnd = 0.0;
+        if (! full)
+        {
+            rStart = std::numeric_limits<double>::max();
+            rEnd = std::numeric_limits<double>::lowest();
+            for (const auto& n : snap->notes)
+                if (std::find (selIds.begin(), selIds.end(), n.id) != selIds.end())
+                {
+                    rStart = std::min (rStart, n.start);
+                    rEnd = std::max (rEnd, n.start + n.length);
+                }
+            if (rEnd <= rStart) // stale ids: fall back to the whole document
+                full = true;
+        }
+
+        std::vector<Note> regionNotes;
+        for (const auto& n : snap->notes)
+            if (full || (n.start < rEnd && n.start + n.length > rStart))
+                regionNotes.push_back (n);
+
+        auto detected = ChordAnalyzer::analyze (regionNotes);
+        if (detected.empty())
+        {
+            pushToastKey ("toast.noChordsFound");
+            return okResult (juce::var (false));
+        }
+
+        processor.document.beginTransaction ("识别和弦");
+        std::vector<juce::uint32> removeIds;
+        for (const auto& c : snap->chords)
+            if (full || (c.start < rEnd && c.start + c.length > rStart))
+                removeIds.push_back (c.id);
+        processor.document.removeChords (removeIds);
+        for (const auto& c : detected)
+            processor.document.addChord (c);
+        processor.document.commitTransaction();
+
+        pushToastKey ("toast.chordsDetected", {{ "n", juce::String ((int) detected.size()) }});
+        auto data = new juce::DynamicObject();
+        data->setProperty ("count", (double) detected.size());
+        return okResult (juce::var (data));
     }
 
     if (name == "settings.update")
