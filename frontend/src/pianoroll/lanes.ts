@@ -7,6 +7,9 @@ import { xOfPpq } from './ViewMap';
 
 export type LanePoint = { id: number; t: number; v: number }; // v in lane units
 
+/** Velocity bar width in px — fixed so zoom never changes it (hit-tests share this). */
+export const VELOCITY_BAR_W = 8;
+
 export function drawLaneBase(
   ctx: CanvasRenderingContext2D, v: ViewState, c: ThemeColors,
   w: number, h: number, gridStep: number,
@@ -34,7 +37,7 @@ export function drawVelocityLane(
       if (selection.has(n.id) !== wantSelected) continue;
       const vel = dragOverrides?.get(n.id) ?? n.v;
       const x = xOfPpq(v, n.s);
-      const barW = Math.max(3, Math.min(n.l * v.pxPerPpq - 1, 16));
+      const barW = VELOCITY_BAR_W;
       const barH = Math.max(2, vel * (h - 4));
       ctx.fillStyle = wantSelected ? c['note-selected'] : c['note-fill'];
       ctx.globalAlpha = 0.9;

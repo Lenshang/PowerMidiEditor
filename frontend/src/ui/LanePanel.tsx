@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getBridge } from '../bridge/bridge';
 import type { EditOp } from '../bridge/protocol';
-import { drawLaneBase, drawCurveLane, drawVelocityLane } from '../pianoroll/lanes';
+import { drawLaneBase, drawCurveLane, drawVelocityLane, VELOCITY_BAR_W } from '../pianoroll/lanes';
 import { ppqAtX, xOfPpq } from '../pianoroll/ViewMap';
 import { snapPpq, transportClock, useStore, CC_CHOICES, gridStepPpq, type LaneMode } from '../state/store';
 import { themeColors } from './themes';
@@ -244,7 +244,7 @@ export function LanePanel(): React.ReactElement {
     for (const n of st.doc.notes) {
       if (st.selection.length > 0 && !st.selection.includes(n.id)) continue;
       const barX = xOfPpq(v, n.s);
-      const barW = Math.max(3, Math.min(n.l * v.pxPerPpq - 1, 16));
+      const barW = VELOCITY_BAR_W;
       const hitNow = toX >= barX - 3 && toX <= barX + barW + 3;
       const swept = barX <= hi && barX + barW >= lo;
       if (!hitNow && !swept) continue;
@@ -295,7 +295,7 @@ export function LanePanel(): React.ReactElement {
       // top). With an active selection only selected notes are editable.
       const matches = st.doc.notes.filter((n) => {
         const barX = xOfPpq(v, n.s);
-        const barW = Math.max(3, Math.min(n.l * v.pxPerPpq - 1, 16));
+        const barW = VELOCITY_BAR_W;
         return x >= barX - 3 && x <= barX + barW + 3;
       });
       if (matches.length === 0) return;
