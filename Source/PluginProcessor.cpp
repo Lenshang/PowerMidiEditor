@@ -385,50 +385,28 @@ void PowerMidiEditorAudioProcessor::renderPreviewSynth (juce::AudioBuffer<float>
 // Live recording: message-thread drain of the recFIFO into the document.
 void PowerMidiEditorAudioProcessor::drainRecordedNotes()
 {
-    struct FinishedPair { double start; float vel; int channel; int pitch; };
-    std::vector<FinishedPair> finished;
+    std::vector<RecEvent> events;
 
     auto r = recRead.load (std::memory_order_relaxed);
     auto w = recWrite.load (std::memory_order_acquire);
     while (r != w)
     {
-        const auto& ev = recRing[r];
+        events.push_back (recRing[r]);
         r = (r + 1) % recCapacity;
-        const int key = ev.pitch * 16 + ev.channel;
-        if (ev.on)
-        {
-            recPending[key] = { ev.ppq, ev.velocity };
-        }
-        else
-        {
-            auto it = recPending.find (key);
-            if (it != recPending.end())
-            {
-                finished.push_back ({ it->second.first, it->second.second,
-                                      ev.channel, ev.pitch });
-                recPending.erase (it);
-            }
-        }
     }
     recRead.store (r, std::memory_order_release);
 
-    if (finished.empty())
+    if (events.empty())
         return;
 
-    const bool quant = settings.autoQuantizeInput;
-    const double grid = juce::jmax (0.03125, settings.gridPpq);
+    auto notes = notesFromRecordedEvents (events, settings.autoQuantizeInput,
+                                          settings.gridPpq);
+    if (notes.empty())
+        return;
 
     document.beginTransaction ("录音");
-    for (const auto& f : finished)
-    {
-        Note n;
-        n.pitch = f.pitch;
-        n.start = quant ? std::floor (f.start / grid) * grid : f.start;
-        n.length = juce::jmax (grid, f.start + grid - n.start); // >= one grid cell
-        n.velocity = juce::jlimit (0.05f, 1.0f, f.vel);
-        n.channel = f.channel;
+    for (const auto& n : notes)
         document.addNote (n);
-    }
     document.commitTransaction();
 }
 

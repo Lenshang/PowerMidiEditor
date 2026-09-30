@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Model/MidiClipDocument.h"
+#include "Model/RecordedNotes.h"
 #include "FileIO/DrumMapIO.h"
 #include "Playback/PlaybackEngine.h"
 #include "PluginSettings.h"
@@ -168,12 +169,10 @@ private:
 
     // -- live recording ------------------------------------------------------
     std::atomic<bool> recordArmed { false };
-    struct RecEv { bool on; int pitch, channel; float velocity; double ppq; };
     static constexpr int recCapacity = 256;
     std::atomic<int> recRead { 0 };
     std::atomic<int> recWrite { 0 };
-    RecEv recRing[recCapacity];
-    std::map<int, std::pair<double, float>> recPending; // (pitch*16+ch) -> {startPpq, vel}
+    RecEvent recRing[recCapacity];
 
     // -- A/B snapshots --------------------------------------------------------
     juce::var abSlots[2];

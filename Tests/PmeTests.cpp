@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_core/juce_core.h>
 #include "../Source/Model/MidiClipDocument.h"
+#include "../Source/Model/RecordedNotes.h"
 #include "../Source/Playback/PlaybackEngine.h"
 #include "../Source/FileIO/MidiFileIO.h"
 #include "../Source/Model/ChordAnalyzer.h"
@@ -1117,6 +1118,71 @@ static void testMidiMemoryImport()
     temp.deleteFile();
 }
 
+//==============================================================================
+// Live recording must capture the ACTUAL held duration: the note-off time
+// determines the length (this was once hardcoded to one grid cell).
+static void testRecordedNotePairing()
+{
+    // free mode: length = note-off time - note-on time
+    {
+        std::vector<RecEvent> ev = {
+            { true, 60, 1, 0.9f, 1.02 }, { false, 60, 1, 0.0f, 2.37 },
+        };
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        CHECK (notes.size() == 1);
+        if (notes.size() == 1)
+        {
+            CHECK (std::abs (notes[0].start - 1.02) < 1e-9);
+            CHECK (std::abs (notes[0].length - 1.35) < 1e-9);
+            CHECK (std::abs (notes[0].velocity - 0.9f) < 1e-6f);
+            CHECK (notes[0].channel == 1);
+        }
+    }
+
+    // quantized mode: start floors to the grid, end snaps to the nearest line
+    {
+        std::vector<RecEvent> ev = {
+            { true, 60, 1, 0.9f, 1.02 }, { false, 60, 1, 0.0f, 2.90 },
+        };
+        const auto notes = notesFromRecordedEvents (ev, true, 0.25);
+        CHECK (notes.size() == 1);
+        if (notes.size() == 1)
+        {
+            CHECK (std::abs (notes[0].start - 1.0) < 1e-9);
+            CHECK (std::abs (notes[0].length - 2.0) < 1e-9); // end 2.9 -> 3.0
+        }
+    }
+
+    // very short tap still yields one full grid cell
+    {
+        std::vector<RecEvent> ev = {
+            { true, 62, 1, 0.8f, 2.0 }, { false, 62, 1, 0.0f, 2.05 },
+        };
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        CHECK (notes.size() == 1);
+        if (notes.size() == 1)
+            CHECK (std::abs (notes[0].length - 0.25) < 1e-9);
+    }
+
+    // held chord: each pitch pairs with its own note-off independently
+    {
+        std::vector<RecEvent> ev = {
+            { true, 60, 1, 0.9f, 0.0 }, { true, 64, 1, 0.9f, 0.0 },
+            { false, 64, 1, 0.0f, 1.5 }, { false, 60, 1, 0.0f, 2.0 },
+        };
+        const auto notes = notesFromRecordedEvents (ev, false, 0.25);
+        CHECK (notes.size() == 2);
+        for (const auto& n : notes)
+            CHECK (std::abs (n.length - (n.pitch == 60 ? 2.0 : 1.5)) < 1e-9);
+    }
+
+    // an unmatched note-off is ignored
+    {
+        std::vector<RecEvent> ev = { { false, 60, 1, 0.0f, 1.0 } };
+        CHECK (notesFromRecordedEvents (ev, false, 0.25).empty());
+    }
+}
+
 int main()
 {
     testDocumentUndoRedo();
@@ -1134,6 +1200,7 @@ int main()
     testPreviewPauseAndRate();
     testControllerAndPitchBend();
     testCurveInterpolation();
+    testRecordedNotePairing();
     testInternalTransport();
     testExpressionMapImport();
     testLyricRoundTrip();
