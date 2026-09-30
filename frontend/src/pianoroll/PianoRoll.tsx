@@ -281,12 +281,24 @@ export function PianoRoll(): React.ReactElement {
 
   // --- midi input: pressed-key highlight + step input -------------------------
   useEffect(() => {
+    // The rAF tick only repaints the keys when an entry expires, and with the
+    // transport stopped nothing else redraws them — so a press must repaint
+    // the key column itself, right away.
+    const repaintKeys = () => {
+      const st = useStore.getState();
+      const keys = keysRef.current && setupCanvas(keysRef.current, KEYS_WIDTH, st.view.height);
+      if (keys) drawKeys(keys, st.view, themeColors(st.settings.theme), KEYS_WIDTH, st.view.height,
+        new Set(pressedRef.current.keys()), st.drumMode);
+    };
     const sub = (events: MidiInEvent[]) => {
       const st = useStore.getState();
       const now = performance.now();
       for (const e of events) {
-        if (e.on) pressedRef.current.set(e.p, now + 400);
-        else pressedRef.current.set(e.p, now);
+        // Key light must track the physical hold: note-on lights the key until
+        // the matching note-off (the long expiry only guards a lost note-off),
+        // note-off gives a short decay so fast retriggering stays visible.
+        if (e.on) pressedRef.current.set(e.p, now + 30000);
+        else pressedRef.current.set(e.p, now + 180);
         if (st.activeTool === 'step' && e.on) {
           const len = gridStepPpq(st.settings);
           st.editDoc([{
@@ -295,6 +307,7 @@ export function PianoRoll(): React.ReactElement {
           }], t('tb.tool.step'));
           st.setEditCursor(st.editCursorPpq + len);
         }      }
+      repaintKeys();
     };
     midiBus.subs.add(sub);
     return () => { midiBus.subs.delete(sub); };
