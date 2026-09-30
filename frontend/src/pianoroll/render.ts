@@ -304,7 +304,7 @@ function drawNote(
 ): void {
   const x = xOfPpq(v, n.s);
   const y = yOfPitch(v, n.p);
-  const w = Math.max(3, n.l * v.pxPerPpq - 1);
+  const w = Math.max(3, n.l * v.pxPerPpq);
   const h = Math.max(2, v.rowHeight - 1);
   if (x + w < 0 || x > v.width || y + h < 0 || y > v.height) return;
 
@@ -354,7 +354,10 @@ function drawNote(
 
   ctx.strokeStyle = selected ? c['note-selected-border'] : inChord ? c['loop-band'] : c['note-border'];
   ctx.lineWidth = inChord && !selected ? 1.5 : 1;
-  roundedRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r);
+  // Border path is one half-pixel wider than the fill so its right edge lands
+  // exactly ON the note-end boundary: two back-to-back (legato) notes then
+  // share a single 1px separator instead of showing a 2-3px gap.
+  roundedRect(ctx, x + 0.5, y + 0.5, w, h - 1, r);
   ctx.stroke();
   ctx.lineWidth = 1;
 
