@@ -246,7 +246,9 @@ export const useStore = create<StoreState>((set, get) => ({
         // have data; the active number falls back to the first existing lane.
         const existing = [...new Set(d.ccs.map((c) => c.cc))].sort((a, b) => a - b);
         const ccNumber = existing.includes(get().ccNumber) ? get().ccNumber : (existing[0] ?? get().ccNumber);
-        set({ doc: d, ccNumber, chordSelection, pendingChordSelect: false });
+        // auto-selecting the new chord drops any note selection (exclusivity)
+        const selection = get().pendingChordSelect && d.chords.length > 0 ? [] : get().selection;
+        set({ doc: d, ccNumber, selection, chordSelection, pendingChordSelect: false });
         break;
       }
       case 'drummap':
@@ -296,7 +298,9 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setSelection(ids) {
-    set({ selection: ids });
+    // Note and chord selections are mutually exclusive: picking notes drops
+    // any chord selection, so an edit op always has exactly one target kind.
+    set(ids.length > 0 ? { selection: ids, chordSelection: [] } : { selection: ids });
   },
 
   setLaneMode(m) {
@@ -328,7 +332,8 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setChordSelection(ids) {
-    set({ chordSelection: ids });
+    // picking chords drops any note selection (see setSelection)
+    set(ids.length > 0 ? { chordSelection: ids, selection: [] } : { chordSelection: ids });
   },
 
   setActiveArticulation(id) {
