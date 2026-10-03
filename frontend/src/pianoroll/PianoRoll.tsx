@@ -1009,12 +1009,26 @@ export function PianoRoll(): React.ReactElement {
     const st = useStore.getState();
     const x = chordRelative(e);
     const dPpq = (x - d.startX) / st.view.pxPerPpq;
+    // Neighbours, frozen at drag start: chords may touch end-to-end but never
+    // overlap, so both move and resize clamp against them.
+    let prevEnd = 0;
+    let nextStart = Infinity;
+    for (const c of st.doc.chords) {
+      if (c.id === d.id) continue;
+      if (c.s + c.l <= d.startS + 1e-9) prevEnd = Math.max(prevEnd, c.s + c.l);
+      else nextStart = Math.min(nextStart, c.s);
+    }
     if (d.mode === 'move') {
-      const ns = Math.max(0, st.settings.snap ? snapPpq(d.startS + dPpq, st.settings, 'round') : d.startS + dPpq);
+      let ns = Math.max(0, st.settings.snap ? snapPpq(d.startS + dPpq, st.settings, 'round') : d.startS + dPpq);
+      ns = Math.min(Math.max(ns, prevEnd),
+        Math.max(prevEnd, Number.isFinite(nextStart) ? nextStart - d.startL : ns));
       d.ghost = { id: d.id, s: ns, l: d.startL };
     } else {
-      const end = snapPpq(d.startS + d.startL + dPpq, st.settings, 'round');
-      d.ghost = { id: d.id, s: d.startS, l: Math.max(gridStepPpq(st.settings), end - d.startS) };
+      const rawL = Math.max(gridStepPpq(st.settings),
+        snapPpq(d.startS + d.startL + dPpq, st.settings, 'round') - d.startS);
+      // never grow into the next chord (touching its start is allowed)
+      const maxL = Number.isFinite(nextStart) ? Math.max(0.05, nextStart - d.startS) : rawL;
+      d.ghost = { id: d.id, s: d.startS, l: Math.min(rawL, maxL) };
     }
     d.moved = true;
     draw();
@@ -1080,7 +1094,8 @@ export function PianoRoll(): React.ReactElement {
       <canvas ref={rulerRef} className="roll-ruler" height={RULER_HEIGHT}
         onPointerDown={onRulerPointerDown} onPointerMove={onRulerPointerMove} onPointerUp={onRulerPointerUp} />
       <div ref={chordWrapRef} className="roll-chords" style={{ height: CHORD_LANE_HEIGHT }}
-        onPointerDown={onChordPointerDown} onPointerMove={onChordPointerMove} onPointerUp={onChordPointerUp}>
+        onPointerDown={onChordPointerDown} onPointerMove={onChordPointerMove} onPointerUp={onChordPointerUp}
+        onContextMenu={(e) => e.preventDefault()}>
         <canvas ref={chordRef} className="roll-layer" />
       </div>
       <canvas ref={keysRef} className="roll-keys" width={KEYS_WIDTH} onPointerDown={onKeysPointerDown} />
