@@ -77,6 +77,12 @@ interface StoreState {
   /** articulation display strip visibility (user-toggleable) */
   showArtStrip: boolean;
   setShowArtStrip(v: boolean): void;
+  /** bottom panel heights (px): velocity/CC lane area and the art strip */
+  laneHeight: number;
+  setLaneHeight(h: number): void;
+  /** null = auto-fit to the packed rows */
+  artStripHeight: number | null;
+  setArtStripHeight(h: number): void;
   /** set before editDoc(addChord): the doc handler auto-selects the new chord */
   pendingChordSelect: boolean;
   setPendingChordSelect(v: boolean): void;
@@ -187,6 +193,8 @@ export const useStore = create<StoreState>((set, get) => ({
   laneSelection: [],
   laneMode: 'velocity',
   showArtStrip: true,
+  laneHeight: 108,
+  artStripHeight: null,
   pendingChordSelect: false,
   ccNumber: 11,
   chordSelection: [],
@@ -297,6 +305,14 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setShowArtStrip(v) {
     set({ showArtStrip: v });
+  },
+
+  setLaneHeight(h) {
+    set({ laneHeight: Math.max(40, Math.min(400, Math.round(h))) });
+  },
+
+  setArtStripHeight(h) {
+    set({ artStripHeight: Math.max(18, Math.min(250, Math.round(h))) });
   },
 
   setPendingChordSelect(v) {

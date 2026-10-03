@@ -763,6 +763,15 @@ body {
   padding: 4px 8px 4px 0;
   height: 108px;
 }
+/* bottom panel height drag grips */
+.row-resize-handle {
+  /* fully inside its (overflow:hidden) container — a negative top would be
+     clipped and the boundary pixels would fall through to the container */
+  position: absolute; top: 0; left: 0; right: 0; height: 5px;
+  cursor: ns-resize; z-index: 6;
+}
+.row-resize-handle:hover { background: var(--accent); opacity: 0.3; }
+
 /* articulation display strip: read-only pills, auto multi-row */
 .art-strip-close {
   position: absolute; top: 1px; right: 4px; z-index: 2;

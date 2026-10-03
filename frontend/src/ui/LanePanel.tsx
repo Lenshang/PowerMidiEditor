@@ -38,6 +38,8 @@ interface DragState {
 export function LanePanel(): React.ReactElement {
   const laneMode = useStore((s) => s.laneMode);
   const showArtStrip = useStore((s) => s.showArtStrip);
+  const laneHeight = useStore((s) => s.laneHeight);
+  const artStripHeight = useStore((s) => s.artStripHeight);
   const ccNumber = useStore((s) => s.ccNumber);
   const view = useStore((s) => s.view);
   const doc = useStore((s) => s.doc);
@@ -59,7 +61,7 @@ export function LanePanel(): React.ReactElement {
   const lanes: Array<{ kind: 'velocity' } | { kind: 'cc'; cc: number } | { kind: 'pb' }> =
     laneMode === 'cc' ? [{ kind: 'cc' as const, cc: ccNumber }]
       : [{ kind: laneMode === 'pb' ? 'pb' : 'velocity' } as never];
-  const laneH = LANE_H / lanes.length;
+  const laneH = laneHeight / lanes.length;
   const maxValue = laneMode === 'pb' ? 16383 : 127;
 
   const laneEvents = (laneIndex: number): Array<{ id: number; t: number; v: number }> => {
@@ -572,6 +574,28 @@ export function LanePanel(): React.ReactElement {
     else st.setHint(ti('lane.velocityBelongsToNotes'));
   };
 
+  // Bottom-panel height drag: a 6px grip on a panel's top edge; dragging up
+  // grows the panel, the roll above flexes to make room.
+  const startHeightDrag = (
+    e: React.PointerEvent, min: number, max: number,
+    getStart: () => number, apply: (h: number) => void,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startY = e.clientY;
+    const startH = getStart();
+    const move = (ev: PointerEvent) => {
+      apply(startH + (startY - ev.clientY));
+      void min; void max; // clamped inside the store setters
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   const tabs: Array<{ id: LaneMode; label: string }> = [
     { id: 'velocity', label: 'lane.velocity' },
     { id: 'cc', label: 'CC' },
@@ -703,7 +727,7 @@ export function LanePanel(): React.ReactElement {
           if (next) { next.focus(); next.select(); }
         };
         return (
-          <div className="lyric-body" style={{ height: LANE_H }}>
+          <div className="lyric-body" style={{ height: laneHeight }}>
             <div className="lyric-strip">
               <div className="lyric-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
                 {ordered.map((n, idx) => {
@@ -740,13 +764,16 @@ export function LanePanel(): React.ReactElement {
         <div
           ref={wrapRef}
           className="lane-body"
-          style={{ height: LANE_H }}
+          style={{ height: laneHeight }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         >
           <canvas ref={baseRef} className="lane-canvas" />
           <canvas ref={overlayRef} className="lane-canvas" />
+          <div className="row-resize-handle" title="拖拽调整高度"
+            onPointerDown={(e) => startHeightDrag(e, 40, 400,
+              () => useStore.getState().laneHeight, (h) => useStore.getState().setLaneHeight(h))} />
         </div>
       )}
       {(() => {
@@ -780,7 +807,11 @@ export function LanePanel(): React.ReactElement {
         const vis0 = (scrollX - 0.5) * px;
         const vis1 = (scrollX + view.width / px + 0.5) * px;
         return (
-          <div className="art-strip" style={{ height: rows * ROW_H }}>
+          <div className="art-strip" style={{ height: artStripHeight ?? rows * ROW_H }}>
+            <div className="row-resize-handle" title="拖拽调整高度"
+              onPointerDown={(e) => startHeightDrag(e, 18, 250,
+                () => useStore.getState().artStripHeight ?? rows * ROW_H,
+                (h) => useStore.getState().setArtStripHeight(h))} />
             <button className="art-strip-close" title={ti('lane.close')}
               onClick={() => useStore.getState().setShowArtStrip(false)}>✕</button>
             <div className="art-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
