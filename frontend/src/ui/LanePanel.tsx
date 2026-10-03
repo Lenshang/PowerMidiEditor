@@ -48,6 +48,7 @@ export function LanePanel(): React.ReactElement {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const sizeRef = useRef({ w: 800, h: LANE_H });
+  const artMeasureRef = useRef<CanvasRenderingContext2D | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drawMode, setDrawMode] = useState<'point' | 'line' | 'free'>('point');
 
@@ -740,6 +741,59 @@ export function LanePanel(): React.ReactElement {
           <canvas ref={overlayRef} className="lane-canvas" />
         </div>
       )}
+      {(() => {
+        // Articulation display strip (read-only): one pill per note carrying
+        // an articulation, greedy-packed into extra rows when pills would
+        // collide at narrow zoom. Hidden entirely when nothing is tagged.
+        const artNames = new Map<number, string>();
+        for (const a of doc.articulations) artNames.set(a.id, a.n);
+        const tagged = doc.notes.filter((n) => n.a >= 0 && artNames.has(n.a));
+        if (tagged.length === 0) return null;
+        const px = view.pxPerPpq;
+        if (!artMeasureRef.current)
+          artMeasureRef.current = document.createElement('canvas').getContext('2d');
+        const meas = artMeasureRef.current!;
+        const ROW_H = 18;
+        const rowEnd: number[] = [];
+        const items = tagged
+          .slice().sort((a, b) => a.s - b.s)
+          .map((n) => {
+            const label = artNames.get(n.a) ?? '';
+            meas.font = '10px system-ui, sans-serif';
+            const w = Math.ceil(meas.measureText(label).width) + 12;
+            const x = n.s * px;
+            let row = rowEnd.findIndex((end) => end + 4 <= x);
+            if (row < 0) { row = rowEnd.length; rowEnd.push(0); }
+            rowEnd[row] = x + w;
+            return { n, label, x, w, row };
+          });
+        const rows = Math.min(rowEnd.length, 5);
+        const scrollX = view.scrollXPpq;
+        const vis0 = (scrollX - 0.5) * px;
+        const vis1 = (scrollX + view.width / px + 0.5) * px;
+        return (
+          <div className="art-strip" style={{ height: rows * ROW_H }}>
+            <div className="art-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
+              {items.map(({ n, label, x, w, row }) => {
+                if (x + w < vis0 || x > vis1) return null;
+                const hue = (n.a * 137.5) % 360;
+                return (
+                  <div key={n.id} className={`art-pill ${selection.includes(n.id) ? 'sel' : ''}`}
+                    style={{
+                      left: x, top: row * ROW_H + 2, width: w,
+                      background: `hsl(${hue} 40% 28%)`,
+                      color: `hsl(${hue} 75% 80%)`,
+                    }}
+                    title={label}
+                    onClick={() => useStore.getState().setSelection([n.id])}>
+                    {label}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
       {addCcOpen && (
         <div className="modal-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setAddCcOpen(false); }}>
           <div className="modal cc-add-modal">

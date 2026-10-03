@@ -763,6 +763,16 @@ body {
   padding: 4px 8px 4px 0;
   height: 108px;
 }
+/* articulation display strip: read-only pills, auto multi-row */
+.art-strip { position: relative; overflow: hidden; border-top: 1px solid var(--border); flex: none; background: var(--bg-panel); }
+.art-strip-inner { position: absolute; inset: 0; will-change: transform; }
+.art-pill {
+  position: absolute; height: 14px; line-height: 14px;
+  font-size: 10px; padding: 0 5px; border-radius: 7px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-align: center; cursor: pointer; user-select: none;
+}
+.art-pill.sel { outline: 1px solid var(--accent); }
 .lyric-strip { position: relative; flex: 1; overflow: hidden; }
 .lyric-strip-inner { position: absolute; inset: 0; will-change: transform; }
 .lyric-cell {
