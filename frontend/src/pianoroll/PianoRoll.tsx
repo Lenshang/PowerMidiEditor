@@ -985,10 +985,21 @@ export function PianoRoll(): React.ReactElement {
       capturePointer(e.target as Element, e.pointerId);
     } else {
       const s = Math.max(0, snapPpq(ppqAtX(v, x), st.settings, 'floor'));
+      // No overlaps on creation either: bail if the snapped start lands
+      // inside an existing chord, and trim the new chord to the gap before
+      // the next one.
+      let inside = false;
+      let nextStart = Infinity;
+      for (const c of st.doc.chords) {
+        if (c.s < s - 1e-9 && c.s + c.l > s + 1e-9) inside = true;
+        if (c.s >= s - 1e-9) nextStart = Math.min(nextStart, c.s);
+      }
+      if (inside) return;
+      const l = Number.isFinite(nextStart) ? Math.max(0.05, nextStart - s) : 4.0;
       // auto-select after the doc push lands: the toolbar root/quality
       // dropdowns only render for a selected chord
       st.setPendingChordSelect(true);
-      st.editDoc([{ op: 'addChord', chord: { s, l: 4.0, r: 0, q: 0 } }], t('pr.addChord'));
+      st.editDoc([{ op: 'addChord', chord: { s, l, r: 0, q: 0 } }], t('pr.addChord'));
     }
   };
 
