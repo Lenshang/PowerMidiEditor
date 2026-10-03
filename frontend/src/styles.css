@@ -772,7 +772,7 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   text-align: center; cursor: pointer; user-select: none;
 }
-.art-pill.sel { outline: 1px solid var(--accent); }
+.art-pill.sel { outline: 1px solid var(--accent); box-shadow: 0 0 10px var(--accent); }
 .lyric-strip { position: relative; flex: 1; overflow: hidden; }
 .lyric-strip-inner { position: absolute; inset: 0; will-change: transform; }
 .lyric-cell {

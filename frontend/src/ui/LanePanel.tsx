@@ -777,12 +777,14 @@ export function LanePanel(): React.ReactElement {
               {items.map(({ n, label, x, w, row }) => {
                 if (x + w < vis0 || x > vis1) return null;
                 const hue = (n.a * 137.5) % 360;
+                const sel = selection.includes(n.id);
                 return (
-                  <div key={n.id} className={`art-pill ${selection.includes(n.id) ? 'sel' : ''}`}
+                  <div key={n.id} className={`art-pill ${sel ? 'sel' : ''}`}
                     style={{
                       left: x, top: row * ROW_H + 2, width: w,
-                      background: `hsl(${hue} 40% 28%)`,
-                      color: `hsl(${hue} 75% 80%)`,
+                      background: sel ? 'var(--accent)' : `hsl(${hue} 40% 28%)`,
+                      color: sel ? 'var(--bg-app)' : `hsl(${hue} 75% 80%)`,
+                      fontWeight: sel ? 700 : 400,
                     }}
                     title={label}
                     onClick={() => useStore.getState().setSelection([n.id])}>
