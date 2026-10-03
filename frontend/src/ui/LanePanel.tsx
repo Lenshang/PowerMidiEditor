@@ -37,6 +37,7 @@ interface DragState {
 
 export function LanePanel(): React.ReactElement {
   const laneMode = useStore((s) => s.laneMode);
+  const showArtStrip = useStore((s) => s.showArtStrip);
   const ccNumber = useStore((s) => s.ccNumber);
   const view = useStore((s) => s.view);
   const doc = useStore((s) => s.doc);
@@ -590,6 +591,13 @@ export function LanePanel(): React.ReactElement {
             {ti(tab.label)}
           </button>
         ))}
+        <button
+          className={`lane-tab ${showArtStrip ? 'active' : ''}`}
+          title={ti('lane.artStripTitle')}
+          onClick={() => useStore.getState().setShowArtStrip(!showArtStrip)}
+        >
+          {ti('lane.artStrip')}
+        </button>
         {laneMode === 'cc' && (() => {
           const existingCcs = [...new Set(doc.ccs.map((e) => e.cc))].sort((a, b) => a - b);
           const ccName = (cc: number) => {
@@ -748,7 +756,7 @@ export function LanePanel(): React.ReactElement {
         const artNames = new Map<number, string>();
         for (const a of doc.articulations) artNames.set(a.id, a.n);
         const tagged = doc.notes.filter((n) => n.a >= 0 && artNames.has(n.a));
-        if (tagged.length === 0) return null;
+        if (tagged.length === 0 || !showArtStrip) return null;
         const px = view.pxPerPpq;
         if (!artMeasureRef.current)
           artMeasureRef.current = document.createElement('canvas').getContext('2d');
@@ -773,6 +781,8 @@ export function LanePanel(): React.ReactElement {
         const vis1 = (scrollX + view.width / px + 0.5) * px;
         return (
           <div className="art-strip" style={{ height: rows * ROW_H }}>
+            <button className="art-strip-close" title={ti('lane.close')}
+              onClick={() => useStore.getState().setShowArtStrip(false)}>✕</button>
             <div className="art-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
               {items.map(({ n, label, x, w, row }) => {
                 if (x + w < vis0 || x > vis1) return null;

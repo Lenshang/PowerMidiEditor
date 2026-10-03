@@ -74,6 +74,9 @@ interface StoreState {
   selection: number[];
   laneSelection: number[];
   laneMode: LaneMode;
+  /** articulation display strip visibility (user-toggleable) */
+  showArtStrip: boolean;
+  setShowArtStrip(v: boolean): void;
   /** set before editDoc(addChord): the doc handler auto-selects the new chord */
   pendingChordSelect: boolean;
   setPendingChordSelect(v: boolean): void;
@@ -183,6 +186,7 @@ export const useStore = create<StoreState>((set, get) => ({
   selection: [],
   laneSelection: [],
   laneMode: 'velocity',
+  showArtStrip: true,
   pendingChordSelect: false,
   ccNumber: 11,
   chordSelection: [],
@@ -289,6 +293,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setLaneMode(m) {
     set({ laneMode: m, laneSelection: [] });
+  },
+
+  setShowArtStrip(v) {
+    set({ showArtStrip: v });
   },
 
   setPendingChordSelect(v) {
