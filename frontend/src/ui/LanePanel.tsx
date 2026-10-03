@@ -716,11 +716,24 @@ export function LanePanel(): React.ReactElement {
         // Lyric strip aligned with the piano-roll timeline: one input per
         // note, positioned at its start; Enter commits and advances to the
         // next note to the right (fast syllable entry, SynthV-style).
+        // Dense passages wrap greedily into extra rows (same packing as the
+        // articulation strip) instead of overlapping; rows beyond the panel
+        // height are clipped — drag the panel taller for more.
         const px = view.pxPerPpq;
         const scrollX = view.scrollXPpq;
         const vis0 = scrollX - 0.5;
         const vis1 = scrollX + view.width / px;
         const ordered = [...doc.notes].sort((a, b) => a.s - b.s);
+        const ROW_H = 28;
+        const rowEnd: number[] = [];
+        const placed = ordered.map((n) => {
+          const x = n.s * px;
+          const w = Math.max(14, Math.min(n.l * px - 4, 220));
+          let row = rowEnd.findIndex((end) => end + 2 <= x);
+          if (row < 0) { row = rowEnd.length; rowEnd.push(0); }
+          rowEnd[row] = x + w;
+          return { n, x, w, row };
+        });
         const advance = (idx: number) => {
           const next = document.querySelector<HTMLInputElement>(
             `.lyric-strip input[data-i="${idx + 1}"]`);
@@ -730,14 +743,12 @@ export function LanePanel(): React.ReactElement {
           <div className="lyric-body" style={{ height: laneHeight }}>
             <div className="lyric-strip">
               <div className="lyric-strip-inner" style={{ transform: `translateX(${-scrollX * px}px)` }}>
-                {ordered.map((n, idx) => {
-                  const x = n.s * px;
+                {placed.map(({ n, x, w, row }, idx) => {
                   if (x < vis0 * px - 160 || x > vis1 * px + 160) return null;
-                  const w = Math.max(14, Math.min(n.l * px - 4, 220));
                   return (
                     <div key={n.id} className={`lyric-cell ${selection.includes(n.id) ? 'sel' : ''}`}
-                      style={{ left: x, width: w }} title={`p=${n.p}`}>
-                      <input data-i={ordered.indexOf(n)} value={n.ly ?? ''}
+                      style={{ left: x, top: row * ROW_H, width: w }} title={`p=${n.p}`}>
+                      <input data-i={idx} value={n.ly ?? ''}
                         onChange={(e) => {
                           useStore.getState().editDoc(
                             [{ op: 'update' as const, note: { id: n.id, ly: e.target.value } }],
@@ -748,7 +759,7 @@ export function LanePanel(): React.ReactElement {
                             useStore.getState().editDoc(
                               [{ op: 'update' as const, note: { id: n.id, ly: (e.target as HTMLInputElement).value } }],
                               ti('lane.lyricEdit'));
-                            advance(ordered.indexOf(n));
+                            advance(idx);
                           }
                         }}
                       />
