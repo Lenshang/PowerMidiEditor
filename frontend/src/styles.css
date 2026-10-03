@@ -764,7 +764,7 @@ body {
   height: 108px;
 }
 /* articulation display strip: read-only pills, auto multi-row */
-.art-strip { position: relative; overflow: hidden; border-top: 1px solid var(--border); flex: none; background: var(--bg-panel); }
+.art-strip { position: relative; overflow: hidden; margin-left: 64px; border-top: 1px solid var(--border); flex: none; background: var(--bg-panel); }
 .art-strip-inner { position: absolute; inset: 0; will-change: transform; }
 .art-pill {
   position: absolute; height: 14px; line-height: 14px;
