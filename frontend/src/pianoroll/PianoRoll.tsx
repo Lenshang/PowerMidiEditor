@@ -78,7 +78,11 @@ export function PianoRoll(): React.ReactElement {
 
   const marqueeRef = useRef<Marquee | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const chordDragRef = useRef<{ mode: 'move' | 'resize'; id: number; startX: number; startS: number; startL: number; ghost: { id: number; s: number; l: number } | null; moved: boolean } | null>(null);
+  const chordDragRef = useRef<{
+    mode: 'move' | 'resize'; id: number; ids: number[]; startX: number;
+    originals: Map<number, { s: number; l: number }>;
+    ghosts: Map<number, { s: number; l: number }>; moved: boolean;
+  } | null>(null);
   const razorHoverRef = useRef<number | null>(null);
   // pencil/spray creation ghost: the exact spot (after snap + chord assist)
   // where the next click would create a note
@@ -165,7 +169,8 @@ export function PianoRoll(): React.ReactElement {
     const chordLane = chordRef.current && setupCanvas(chordRef.current, v.width, CHORD_LANE_HEIGHT);
     if (chordLane) {
       drawChordLane(chordLane, v, colors, st.doc.chords, new Set(st.chordSelection),
-        v.width, CHORD_LANE_HEIGHT, chordDragRef.current?.ghost ?? null);
+        v.width, CHORD_LANE_HEIGHT,
+        chordDragRef.current ? [...chordDragRef.current.ghosts].map(([id, g]) => ({ id, ...g })) : null);
     }
 
     // notes (with drag previews)
@@ -984,16 +989,26 @@ export function PianoRoll(): React.ReactElement {
     const hit = hitChord(x);
     if (hit) {
       const add = e.shiftKey || e.ctrlKey || e.metaKey;
-      st.setChordSelection(add
-        ? (st.chordSelection.includes(hit.id)
-            ? st.chordSelection.filter((i) => i !== hit.id)
-            : [...st.chordSelection, hit.id])
-        : [hit.id]);
-      const mode = x >= xOfPpq(v, hit.s + hit.l) - 7 ? 'resize' : 'move';
-      chordDragRef.current = {
-        mode, id: hit.id, startX: x, startS: hit.s, startL: hit.l,
-        ghost: { id: hit.id, s: hit.s, l: hit.l }, moved: false,
-      };
+      if (add && st.chordSelection.includes(hit.id)) {
+        // toggle off, no drag starts
+        st.setChordSelection(st.chordSelection.filter((i) => i !== hit.id));
+        return;
+      }
+      if (add) st.setChordSelection([...st.chordSelection, hit.id]);
+      else if (!st.chordSelection.includes(hit.id)) st.setChordSelection([hit.id]);
+      // dragging a selected chord moves the whole selection (batch move);
+      // resizing always affects just the grabbed chord
+      const edge = x >= xOfPpq(v, hit.s + hit.l) - 7;
+      const sel = useStore.getState().chordSelection;
+      const ids = edge ? [hit.id] : sel.includes(hit.id) ? sel : [hit.id];
+      const originals = new Map<number, { s: number; l: number }>();
+      const ghosts = new Map<number, { s: number; l: number }>();
+      const doc = useStore.getState().doc;
+      for (const id of ids) {
+        const c = doc.chords.find((cc) => cc.id === id);
+        if (c) { originals.set(id, { s: c.s, l: c.l }); ghosts.set(id, { s: c.s, l: c.l }); }
+      }
+      chordDragRef.current = { mode: edge ? 'resize' : 'move', id: hit.id, ids, startX: x, originals, ghosts, moved: false };
       capturePointer(e.target as Element, e.pointerId);
     } else {
       const s = Math.max(0, snapPpq(ppqAtX(v, x), st.settings, 'floor'));
@@ -1033,26 +1048,40 @@ export function PianoRoll(): React.ReactElement {
     const st = useStore.getState();
     const x = chordRelative(e);
     const dPpq = (x - d.startX) / st.view.pxPerPpq;
-    // Neighbours, frozen at drag start: chords may touch end-to-end but never
-    // overlap, so both move and resize clamp against them.
-    let prevEnd = 0;
-    let nextStart = Infinity;
-    for (const c of st.doc.chords) {
-      if (c.id === d.id) continue;
-      if (c.s + c.l <= d.startS + 1e-9) prevEnd = Math.max(prevEnd, c.s + c.l);
-      else nextStart = Math.min(nextStart, c.s);
-    }
     if (d.mode === 'move') {
-      let ns = Math.max(0, st.settings.snap ? snapPpq(d.startS + dPpq, st.settings, 'round') : d.startS + dPpq);
-      ns = Math.min(Math.max(ns, prevEnd),
-        Math.max(prevEnd, Number.isFinite(nextStart) ? nextStart - d.startL : ns));
-      d.ghost = { id: d.id, s: ns, l: d.startL };
+      // Rigid group move: snap the DELTA (not each chord) so offsets inside
+      // the group survive, then clamp it so no dragged chord overlaps a
+      // stationary one (touching end-to-end is allowed).
+      let delta = st.settings.snap ? snapPpq(dPpq, st.settings, 'round') : dPpq;
+      let dMin = -Infinity;
+      let dMax = Infinity;
+      for (const [, g] of d.originals) {
+        const end = g.s + g.l;
+        for (const c of st.doc.chords) {
+          if (d.originals.has(c.id)) continue;
+          if (c.s + c.l <= g.s + 1e-9) dMin = Math.max(dMin, c.s + c.l - g.s);
+          else if (c.s >= end - 1e-9) dMax = Math.min(dMax, c.s - end);
+        }
+      }
+      const minStart = Math.min(...[...d.originals.values()].map((g) => g.s));
+      dMin = Math.max(dMin, -minStart);
+      if (Number.isFinite(dMin)) delta = Math.max(delta, dMin);
+      if (Number.isFinite(dMax)) delta = Math.min(delta, dMax);
+      for (const [id, g] of d.originals) d.ghosts.set(id, { s: g.s + delta, l: g.l });
     } else {
+      // resize: just the grabbed chord, clamped against its neighbours
+      const g = d.originals.get(d.id)!;
+      let prevEnd = 0;
+      let nextStart = Infinity;
+      for (const c of st.doc.chords) {
+        if (d.originals.has(c.id)) continue;
+        if (c.s + c.l <= g.s + 1e-9) prevEnd = Math.max(prevEnd, c.s + c.l);
+        else nextStart = Math.min(nextStart, c.s);
+      }
       const rawL = Math.max(gridStepPpq(st.settings),
-        snapPpq(d.startS + d.startL + dPpq, st.settings, 'round') - d.startS);
-      // never grow into the next chord (touching its start is allowed)
-      const maxL = Number.isFinite(nextStart) ? Math.max(0.05, nextStart - d.startS) : rawL;
-      d.ghost = { id: d.id, s: d.startS, l: Math.min(rawL, maxL) };
+        snapPpq(g.s + g.l + dPpq, st.settings, 'round') - g.s);
+      const maxL = Number.isFinite(nextStart) ? Math.max(0.05, nextStart - g.s) : rawL;
+      d.ghosts.set(d.id, { s: g.s, l: Math.min(rawL, maxL) });
     }
     d.moved = true;
     draw();
@@ -1062,8 +1091,9 @@ export function PianoRoll(): React.ReactElement {
     const d = chordDragRef.current;
     chordDragRef.current = null;
     if (!d || !d.moved) return;
+    const chords = [...d.ghosts].map(([id, g]) => ({ id, s: g.s, l: g.l }));
     useStore.getState().editDoc(
-      [{ op: 'updateManyChords', chords: [{ id: d.id, s: d.ghost!.s, l: d.ghost!.l }] }],
+      [{ op: 'updateManyChords', chords }],
       d.mode === 'move' ? t('pr.moveChord') : t('pr.resizeChord'));
   };
 

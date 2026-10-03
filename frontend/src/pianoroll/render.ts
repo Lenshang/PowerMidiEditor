@@ -568,7 +568,7 @@ export function drawChordLane(
   ctx: CanvasRenderingContext2D, v: ViewState, c: ThemeColors,
   chords: ChordEvent[], selected: Set<number>,
   w: number, h: number,
-  ghost: (Partial<ChordEvent> & { id: number }) | null,
+  ghosts: (Partial<ChordEvent> & { id: number })[] | null,
 ): void {
   ctx.fillStyle = c['ruler-bg'];
   ctx.fillRect(0, 0, w, h);
@@ -595,8 +595,10 @@ export function drawChordLane(
     }
   };
 
+  const gm = new Map<number, Partial<ChordEvent> & { id: number }>();
+  for (const g of ghosts ?? []) gm.set(g.id, g);
   for (const ch of chords) {
-    const g = ghost?.id === ch.id ? { ...ch, ...ghost } : ch;
+    const g = gm.get(ch.id) ? { ...ch, ...gm.get(ch.id)! } : ch;
     drawChord(g as ChordEvent, selected.has(ch.id));
   }
   ctx.fillStyle = c['border'];
