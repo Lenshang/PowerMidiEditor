@@ -432,11 +432,20 @@ export function PianoRoll(): React.ReactElement {
     const drag = makeDrag(st.drumMode ? 'move' : x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move', x, y);
     drag.duplicate = e.altKey;
     if (st.selection.includes(hit.id)) {
+      if (e.ctrlKey || e.metaKey) {
+        // ctrl-click a selected note: toggle it OFF, no move starts
+        st.setSelection(st.selection.filter((i) => i !== hit.id));
+        return;
+      }
       drag.ids = [...st.selection];
+    } else if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      // additive click (ctrl or shift): add to the current selection and move
+      // the whole thing together
+      st.setSelection([...st.selection, hit.id]);
+      drag.ids = [...st.selection, hit.id];
     } else {
       drag.ids = [hit.id];
-      if (!e.shiftKey) st.setSelection([hit.id]);
-      else { st.setSelection([...st.selection, hit.id]); drag.ids = [...st.selection, hit.id]; }
+      st.setSelection([hit.id]);
     }
     for (const id of drag.ids) {
       const n = st.doc.notes.find((nn) => nn.id === id);
@@ -518,23 +527,25 @@ export function PianoRoll(): React.ReactElement {
           draw();
           return;
         }
+        const add = e.shiftKey || e.ctrlKey || e.metaKey;
         marqueeRef.current = {
           x0: x, y0: y, x1: x, y1: y,
-          additive: e.shiftKey,
-          startIds: e.shiftKey ? [...st.selection] : [],
+          additive: add,
+          startIds: add ? [...st.selection] : [],
         };
-        if (!e.shiftKey) st.setSelection([]);
+        if (!add) st.setSelection([]);
         capturePointer(e.target as Element, e.pointerId);
         return;
       }
 
       case 'range': {
+        const add = e.shiftKey || e.ctrlKey || e.metaKey;
         marqueeRef.current = {
           x0: x, y0: 0, x1: x, y1: v.height,
-          additive: e.shiftKey,
-          startIds: e.shiftKey ? [...st.selection] : [],
+          additive: add,
+          startIds: add ? [...st.selection] : [],
         };
-        if (!e.shiftKey) st.setSelection([]);
+        if (!add) st.setSelection([]);
         capturePointer(e.target as Element, e.pointerId);
         return;
       }
@@ -972,7 +983,8 @@ export function PianoRoll(): React.ReactElement {
     const v = st.view;
     const hit = hitChord(x);
     if (hit) {
-      st.setChordSelection(e.shiftKey
+      const add = e.shiftKey || e.ctrlKey || e.metaKey;
+      st.setChordSelection(add
         ? (st.chordSelection.includes(hit.id)
             ? st.chordSelection.filter((i) => i !== hit.id)
             : [...st.chordSelection, hit.id])
