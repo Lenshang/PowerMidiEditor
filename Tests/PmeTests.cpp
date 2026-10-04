@@ -1212,6 +1212,8 @@ static void testRecordedNotePairing()
 static void testSharedChordTrack()
 {
     SharedChordTrack a, b;
+    std::cout << "  shm a.valid=" << a.valid() << " (err=" << a.openError() << ")"
+              << " b.valid=" << b.valid() << " (err=" << b.openError() << ")" << std::endl;
     CHECK (a.valid() && b.valid());
 
     uint32_t v = 0;

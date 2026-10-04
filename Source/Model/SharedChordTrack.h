@@ -41,12 +41,20 @@ public:
 #if _WIN32
         handle = CreateFileMappingA (INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
                                      0, (DWORD) segmentBytes(), kName);
+        if (handle == nullptr)
+            error = (uint32_t) GetLastError();
 #else
         fd = shm_open (kName, O_RDWR, 0666); // existing segment keeps its content
         if (fd < 0)
+        {
+            error = (uint32_t) errno;
             fd = shm_open (kName, O_CREAT | O_RDWR, 0666);
+        }
+        if (fd < 0)
+            error = (uint32_t) errno;
         if (fd >= 0 && ftruncate (fd, (off_t) segmentBytes()) != 0)
         {
+            error = (uint32_t) errno;
             close (fd);
             fd = -1;
         }
@@ -55,6 +63,7 @@ public:
             map = mmap (nullptr, segmentBytes(), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
             if (map == MAP_FAILED)
             {
+                error = (uint32_t) errno;
                 close (fd);
                 fd = -1;
                 map = nullptr;
@@ -105,6 +114,9 @@ public:
         return fd >= 0;
 #endif
     }
+
+    /** Platform error code from the failed open/mapping (0 when valid). */
+    uint32_t openError() const { return error; }
 
     /** Publishes the chord JSON and bumps the version. Returns false when the
      *  segment is unavailable or the payload does not fit. */
@@ -174,9 +186,11 @@ private:
 #if _WIN32
     void* handle = nullptr;
     void* view = nullptr;
+    uint32_t error = 0;
 #else
     int fd = -1;
     void* map = nullptr;
+    uint32_t error = 0;
 #endif
 };
 
