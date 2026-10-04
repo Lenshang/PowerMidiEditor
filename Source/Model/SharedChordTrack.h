@@ -80,8 +80,10 @@ public:
             handle = nullptr;
         }
 #else
-        // map != nullptr is the validity signal on POSIX; nothing else to do
+        // map != nullptr is the validity signal on POSIX
 #endif
+        if (! valid())
+            return; // open/mapping failed: callers see valid()==false and error
         auto* m = base();
         if (m->magic.load (std::memory_order_relaxed) != kMagic)
         {
@@ -161,7 +163,7 @@ private:
 #if _WIN32
         "Local\\PowerMidiEditor.ChordTrack.v1";
 #else
-        "/PowerMidiEditor.ChordTrack.v1";
+        "/PME.Chords.v1";
 #endif
     static constexpr uint32_t kMagic = 0x504D4543; // "PMEC"
 
