@@ -549,7 +549,7 @@ body {
 .mini-btn.capturing { border-color: var(--accent); color: var(--accent); }
 [data-theme='light'] .mini-btn.primary { color: #fff; }
 
-.modal-foot { display: flex; gap: 8px; padding-top: 10px; }
+.modal-foot { display: flex; gap: 8px; padding: 10px 12px 12px 12px; }
 .foot-spring { flex: 1; }
 
 /* theme picker */
