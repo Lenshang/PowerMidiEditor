@@ -51,12 +51,23 @@ public:
             fd = shm_open (kName, O_CREAT | O_RDWR, 0666);
         }
         if (fd < 0)
-            error = (uint32_t) errno;
-        if (fd >= 0 && ftruncate (fd, (off_t) segmentBytes()) != 0)
         {
             error = (uint32_t) errno;
-            close (fd);
-            fd = -1;
+        }
+        else
+        {
+            // macOS rejects ftruncate-to-same-size on a shm object with
+            // EINVAL (reads it as a shrink), so only size it when needed.
+            struct stat st;
+            if (fstat (fd, &st) != 0 || st.st_size < (off_t) segmentBytes())
+            {
+                if (ftruncate (fd, (off_t) segmentBytes()) != 0)
+                {
+                    error = (uint32_t) errno;
+                    close (fd);
+                    fd = -1;
+                }
+            }
         }
         if (fd >= 0)
         {
@@ -69,6 +80,8 @@ public:
                 map = nullptr;
             }
         }
+        if (fd >= 0)
+            error = 0; // a stale probe errno (e.g. ENOENT) is not a real failure
 #endif
 #if _WIN32
         if (handle == nullptr)
