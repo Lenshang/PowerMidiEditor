@@ -79,6 +79,7 @@ export function Toolbar(): React.ReactElement {
   const [drumMapEditorOpen, setDrumMapEditorOpen] = useState(false);
   const [drumModalName, setDrumModalName] = useState('Custom');
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [arpPrompt, setArpPrompt] = useState<string | null>(null); // pattern id awaiting overwrite decision
   const [drumDraft, setDrumDraft] = useState<Array<{ i: number; o: number; c: number; name: string }>>([]);
   // while the editor is open, keep the draft in sync with the store — the
   // import file chooser completes asynchronously and lands via a drummap push
@@ -127,6 +128,33 @@ export function Toolbar(): React.ReactElement {
     if (!b || b.type !== 'key') return '';
     const mods = [b.ctrl && 'Ctrl', b.alt && 'Alt', b.shift && 'Shift'].filter(Boolean).join('+');
     return mods ? `${mods}+${b.code}` : b.code;
+  };
+
+  // Arp fill: adds the pattern; with replace=true, every note overlapping the
+  // chord's region is removed first (one undo transaction for the whole op).
+  const generateArp = (patternId: string, replace: boolean) => {
+    const st = useStore.getState();
+    const chord = st.doc.chords.find((c) => c.id === st.chordSelection[0]);
+    if (!chord) { setHint(t('tb.selectChordFirst')); return; }
+    const q = CHORD_QUALITIES[chord.q] ?? CHORD_QUALITIES[0];
+    const pattern = ARP_PATTERNS.find((p) => p.id === patternId) ?? ARP_PATTERNS[0];
+    const step = settings.triplet ? settings.gridPpq * (2 / 3) : settings.gridPpq;
+    const pool = q.intervals; // one octave of chord tones; the pattern loops over it
+    const n = pool.length;
+    const ops: EditOp[] = [];
+    if (replace) {
+      for (const nt of st.doc.notes) {
+        if (nt.s < chord.s + chord.l - 1e-9 && nt.s + nt.l > chord.s + 1e-9)
+          ops.push({ op: 'remove', id: nt.id });
+      }
+    }
+    let i = 0;
+    for (let t = chord.s; t < chord.s + chord.l - 1e-9; t += step, i++) {
+      const pitch = 60 + chord.r + pool[pattern.index(i, n)];
+      ops.push({ op: 'add' as const, note: { p: Math.min(127, Math.max(0, pitch)), s: +t.toFixed(6), l: step, v: 0.8, m: false, c: 1, a: -1 } });
+    }
+    st.editDoc(ops, t('tb.arpeggio'));
+    setHint(t('tb.arpeggioDone', { chord: NOTE_NAMES[chord.r] + q.label, count: ops.length }));
   };
 
   return (
@@ -306,19 +334,12 @@ export function Toolbar(): React.ReactElement {
               const st = useStore.getState();
               const chord = st.doc.chords.find((c) => c.id === st.chordSelection[0]);
               if (!chord) { setHint(t('tb.selectChordFirst')); return; }
-              const q = CHORD_QUALITIES[chord.q] ?? CHORD_QUALITIES[0];
-              const pattern = ARP_PATTERNS.find((p) => p.id === patternId) ?? ARP_PATTERNS[0];
-              const step = settings.triplet ? settings.gridPpq * (2 / 3) : settings.gridPpq;
-              const pool = q.intervals; // one octave of chord tones; the pattern loops over it
-              const n = pool.length;
-              const ops = [];
-              let i = 0;
-              for (let t = chord.s; t < chord.s + chord.l - 1e-9; t += step, i++) {
-                const pitch = 60 + chord.r + pool[pattern.index(i, n)];
-                ops.push({ op: 'add' as const, note: { p: Math.min(127, Math.max(0, pitch)), s: +t.toFixed(6), l: step, v: 0.8, m: false, c: 1, a: -1 } });
-              }
-              st.editDoc(ops, t('tb.arpeggio'));
-              setHint(t('tb.arpeggioDone', { chord: NOTE_NAMES[chord.r] + q.label, count: ops.length }));
+              // existing notes inside the chord region: let the user decide
+              // whether to keep them or wipe them before the fill
+              const hasNotes = st.doc.notes.some((nt) =>
+                nt.s < chord.s + chord.l - 1e-9 && nt.s + nt.l > chord.s + 1e-9);
+              if (hasNotes) { setArpPrompt(patternId); return; }
+              generateArp(patternId, false);
             }}>
             <option value="">{t('tb.arpeggio')}</option>
             {ARP_PATTERNS.map((p) => (
@@ -528,6 +549,24 @@ export function Toolbar(): React.ReactElement {
               <span className="foot-spring" />
               <button className="dm-foot-btn" onClick={() => setDrumMapEditorOpen(false)}>取消</button>
               <button className="dm-add" onClick={() => { applyDrumDraft(); setDrumMapEditorOpen(false); }}>完成</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {arpPrompt && (
+        <div className="modal-overlay" onPointerDown={(e) => { if (e.target === e.currentTarget) setArpPrompt(null); }}>
+          <div className="modal arp-prompt-modal">
+            <div className="modal-head">
+              <strong>{t('tb.arpOverwriteTitle')}</strong>
+              <button className="tb-btn" onClick={() => setArpPrompt(null)} title={t('lane.close')}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p className="settings-note">{t('tb.arpOverwriteNote')}</p>
+            </div>
+            <div className="modal-foot">
+              <button className="mini-btn" onClick={() => setArpPrompt(null)}>{t('lane.cancel')}</button>
+              <button className="mini-btn" onClick={() => { const pat = arpPrompt; setArpPrompt(null); generateArp(pat, false); }}>{t('tb.arpKeep')}</button>
+              <button className="mini-btn primary" onClick={() => { const pat = arpPrompt; setArpPrompt(null); generateArp(pat, true); }}>{t('tb.arpReplace')}</button>
             </div>
           </div>
         </div>
