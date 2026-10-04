@@ -39,6 +39,8 @@ interface DragState {
   lastSprayCell: number | null;
   moved: boolean;
   lastPreviewPitch: number;
+  /** copy-key click on a selected note: deselect it on release if never moved */
+  toggleOnNoMove?: number;
 }
 
 const lastDrawLen = { value: 0.5 }; // pencil remembers the last drawn length
@@ -453,16 +455,23 @@ export function PianoRoll(): React.ReactElement {
     // drum hits are point markers — no visible length, so no resize edge
     const drag = makeDrag(st.drumMode ? 'move' : x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move', x, y);
     drag.duplicate = dupRequested(e);
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey;
     if (st.selection.includes(hit.id)) {
-      if (e.ctrlKey || e.metaKey) {
-        // ctrl-click a selected note: toggle it OFF, no move starts
+      if (additive && !drag.duplicate) {
+        // toggle-click a selected note with a non-copy modifier: deselect
+        // immediately, no drag starts
         st.setSelection(st.selection.filter((i) => i !== hit.id));
         return;
       }
+      if (drag.duplicate) {
+        // copy-key click on a selected note: the SAME gesture is a copy-drag
+        // when it moves and a deselect when released in place — no conflict
+        drag.toggleOnNoMove = hit.id;
+      }
       drag.ids = [...st.selection];
-    } else if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      // additive click (ctrl or shift): add to the current selection and move
-      // the whole thing together
+    } else if (additive) {
+      // additive click: add to the current selection; the armed drag (move or
+      // copy) then acts on the whole set — with moved=false it just adds
       st.setSelection([...st.selection, hit.id]);
       drag.ids = [...st.selection, hit.id];
     } else {
@@ -842,7 +851,12 @@ export function PianoRoll(): React.ReactElement {
     switch (drag.mode) {
       case 'move':
       {
-        if (!drag.moved) break;
+        if (!drag.moved) {
+          // a copy-key click released in place toggles the note off
+          if (drag.toggleOnNoMove != null)
+            st.setSelection(st.selection.filter((i) => i !== drag.toggleOnNoMove));
+          break;
+        }
         if (drag.duplicate) {
           const ops = drag.ids.map((id) => {
             const o = drag.originals.get(id)!;
