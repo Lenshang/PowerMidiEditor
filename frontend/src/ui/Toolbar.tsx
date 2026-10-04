@@ -12,6 +12,25 @@ import {
   IconRange, IconRazor, IconRedo, IconSelect, IconSpray, IconStep, IconUndo,
 } from './icons';
 
+// Arpeggio patterns over the chord-tone pool (indices 0..n-1, one octave):
+// each maps step index -> pool index, and the pattern LOOPS — a long chord
+// keeps cycling its figure (1357 1357 ...) instead of climbing forever.
+const ARP_PATTERNS: Array<{ id: string; key: string; index: (i: number, n: number) => number }> = [
+  { id: 'up', key: 'tb.arpUp', index: (i, n) => i % n },
+  { id: 'down', key: 'tb.arpDown', index: (i, n) => n - 1 - (i % n) },
+  { id: 'updown', key: 'tb.arpUpDown', index: (i, n) => {
+      const cycle = Math.max(1, 2 * n - 2); const j = i % cycle;
+      return j < n ? j : cycle - j; } },
+  { id: 'downup', key: 'tb.arpDownUp', index: (i, n) => {
+      const cycle = Math.max(1, 2 * n - 2); const j = i % cycle;
+      return j < n ? n - 1 - j : j - (n - 1); } },
+  { id: 'converge', key: 'tb.arpConverge', index: (i, n) => {
+      const order: number[] = [];
+      for (let lo = 0, hi = n - 1; lo <= hi; lo++, hi--) { order.push(lo); if (lo !== hi) order.push(hi); }
+      return order[i % n]; } },
+  { id: 'random', key: 'tb.arpRandom', index: (_i, n) => Math.floor(Math.random() * n) },
+];
+
 const TOOLS: Array<{ id: ToolId; icon: React.FC; label: string; num: string }> = [
   { id: 'select', icon: IconSelect, label: 'tb.tool.select', num: '1' },
   { id: 'range', icon: IconRange, label: 'tb.tool.range', num: '2' },
@@ -279,23 +298,33 @@ export function Toolbar(): React.ReactElement {
               <option key={q.label} value={String(i)}>{q.label}</option>
             ))}
           </select>
-          <button className="tb-btn" title={t('tb.arpeggioTitle')} onClick={() => {
-            const st = useStore.getState();
-            const chord = st.doc.chords.find((c) => c.id === st.chordSelection[0]);
-            if (!chord) { setHint(t('tb.selectChordFirst')); return; }
-            const q = CHORD_QUALITIES[chord.q] ?? CHORD_QUALITIES[0];
-            const step = settings.triplet ? settings.gridPpq * (2 / 3) : settings.gridPpq;
-            const ops = [];
-            let i = 0;
-            for (let t = chord.s; t < chord.s + chord.l - 1e-9; t += step, i++) {
-              const pitch = 60 + chord.r + q.intervals[i % q.intervals.length] + 12 * Math.floor(i / q.intervals.length);
-              ops.push({ op: 'add' as const, note: { p: Math.min(127, pitch), s: +t.toFixed(6), l: step, v: 0.8, m: false, c: 1, a: -1 } });
-            }
-            st.editDoc(ops, t('tb.arpeggio'));
-            setHint(t('tb.arpeggioDone', { chord: NOTE_NAMES[chord.r] + (CHORD_QUALITIES[chord.q] ?? CHORD_QUALITIES[0]).label, count: ops.length }));
-          }}>
-            <span className="tb-text">{t('tb.arpeggio')}</span>
-          </button>
+          <select className="tb-select" title={t('tb.arpeggioTitle')} value=""
+            onChange={(e) => {
+              const patternId = e.target.value;
+              (e.target as HTMLSelectElement).blur(); // Space must reach the roll
+              if (!patternId) return; // menu-style: the placeholder is not a choice
+              const st = useStore.getState();
+              const chord = st.doc.chords.find((c) => c.id === st.chordSelection[0]);
+              if (!chord) { setHint(t('tb.selectChordFirst')); return; }
+              const q = CHORD_QUALITIES[chord.q] ?? CHORD_QUALITIES[0];
+              const pattern = ARP_PATTERNS.find((p) => p.id === patternId) ?? ARP_PATTERNS[0];
+              const step = settings.triplet ? settings.gridPpq * (2 / 3) : settings.gridPpq;
+              const pool = q.intervals; // one octave of chord tones; the pattern loops over it
+              const n = pool.length;
+              const ops = [];
+              let i = 0;
+              for (let t = chord.s; t < chord.s + chord.l - 1e-9; t += step, i++) {
+                const pitch = 60 + chord.r + pool[pattern.index(i, n)];
+                ops.push({ op: 'add' as const, note: { p: Math.min(127, Math.max(0, pitch)), s: +t.toFixed(6), l: step, v: 0.8, m: false, c: 1, a: -1 } });
+              }
+              st.editDoc(ops, t('tb.arpeggio'));
+              setHint(t('tb.arpeggioDone', { chord: NOTE_NAMES[chord.r] + q.label, count: ops.length }));
+            }}>
+            <option value="">{t('tb.arpeggio')}</option>
+            {ARP_PATTERNS.map((p) => (
+              <option key={p.id} value={p.id}>{t(p.key)}</option>
+            ))}
+          </select>
           <div className="toolbar-sep" />
         </>
       )}
