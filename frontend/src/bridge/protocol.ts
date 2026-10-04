@@ -131,6 +131,8 @@ export interface SettingsState {
   snapBypass: string;
   /** drag-copy modifier: alt|ctrl|shift|none */
   dupModifier?: string;
+  /** share the chord track across instances */
+  chordSync?: boolean;
   /** UI language ('en' | 'zhHans' | 'zhHant' | 'ja') */
   lang: string;
   /** midi browser load: analyze the chord track from the loaded notes */

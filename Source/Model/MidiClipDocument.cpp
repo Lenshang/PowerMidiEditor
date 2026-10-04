@@ -225,6 +225,14 @@ void MidiClipDocument::setArticulations (const std::vector<ArticulationDef>& art
     publish();
 }
 
+void MidiClipDocument::setChordsExternal (const std::vector<ChordEvent>& imported)
+{
+    chords.clear();
+    for (const auto& c : imported)
+        chords[c.id] = c;
+    publish();
+}
+
 void MidiClipDocument::apply (const Op& op, bool forward)
 {
     switch (op.type)

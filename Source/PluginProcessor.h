@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Model/MidiClipDocument.h"
 #include "Model/RecordedNotes.h"
+#include "Model/SharedChordTrack.h"
 #include "FileIO/DrumMapIO.h"
 #include "Playback/PlaybackEngine.h"
 #include "PluginSettings.h"
@@ -11,7 +12,8 @@ namespace pme
 {
 
 //==============================================================================
-class PowerMidiEditorAudioProcessor : public juce::AudioProcessor
+class PowerMidiEditorAudioProcessor : public juce::AudioProcessor,
+                                      private juce::Timer
 {
 public:
     PowerMidiEditorAudioProcessor();
@@ -117,6 +119,16 @@ public:
     void setPreviewPaused (bool paused) { engine.setPreviewPaused (paused); }
     bool isPreviewPausedForUi() const { return engine.isPreviewPausedForUi(); }
     double previewPosForUi() const { return engine.previewPosForUi(); }
+
+    // -- shared chord track (cross-instance, named shared memory) ------------
+    // All instances on this machine map the same segment; editing chords here
+    // publishes, the poll timer applies foreign changes (non-undoable).
+    void publishChordsShared();
+    void pollChordsShared();
+    void timerCallback() override;
+    std::unique_ptr<SharedChordTrack> chordShare;
+    uint32_t chordShareVersionSeen = 0;
+    juce::String lastPublishedChords; // canonical json of the last publish/pull
 
     // -- midi browser folders (persisted in ui_prefs) -------------------------
     juce::Array<juce::var> browserFolders() const;

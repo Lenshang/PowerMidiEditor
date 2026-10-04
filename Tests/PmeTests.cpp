@@ -4,6 +4,7 @@
 #include <juce_core/juce_core.h>
 #include "../Source/Model/MidiClipDocument.h"
 #include "../Source/Model/RecordedNotes.h"
+#include "../Source/Model/SharedChordTrack.h"
 #include "../Source/Playback/PlaybackEngine.h"
 #include "../Source/FileIO/MidiFileIO.h"
 #include "../Source/Model/ChordAnalyzer.h"
@@ -1205,6 +1206,51 @@ static void testRecordedNotePairing()
     }
 }
 
+//==============================================================================
+// Cross-instance chord-track sharing: two handles on the same named segment
+// round-trip chords, and setChordsExternal applies them without undo.
+static void testSharedChordTrack()
+{
+    SharedChordTrack a, b;
+    CHECK (a.valid() && b.valid());
+
+    uint32_t v = 0;
+
+    // round-trip: publish a chord list from A, read it from B
+    const juce::String json = "[{\"s\":0,\"l\":4,\"r\":0,\"q\":1},{\"s\":4,\"l\":2,\"r\":9,\"q\":0}]";
+    CHECK (a.publish (json, v));
+    CHECK (b.currentVersion() >= v);
+    juce::String fetched;
+    CHECK (b.fetch (fetched));
+    CHECK (fetched == json);
+
+    // second publish bumps the version
+    uint32_t v2 = 0;
+    CHECK (a.publish ("[]", v2));
+    CHECK (v2 > v);
+
+    // setChordsExternal: applies immediately, not undoable, fresh ids
+    MidiClipDocument doc;
+    std::vector<ChordEvent> chords;
+    for (const int q : { 0, 1 })
+    {
+        ChordEvent c;
+        c.id = (juce::uint32) (q + 1);
+        c.start = 4.0 * q;
+        c.length = 4.0;
+        c.root = q == 0 ? 0 : 9;
+        c.quality = q;
+        chords.push_back (c);
+    }
+    const auto revBefore = doc.getRevision();
+    doc.setChordsExternal (chords);
+    auto snap = doc.getSnapshot();
+    CHECK (snap->chords.size() == 2);
+    CHECK (snap->chords[0].id != snap->chords[1].id);
+    CHECK (doc.getRevision() > revBefore);
+    CHECK (! doc.canUndo()); // external sync must not enter the undo stack
+}
+
 int main()
 {
     testDocumentUndoRedo();
@@ -1223,6 +1269,7 @@ int main()
     testControllerAndPitchBend();
     testCurveInterpolation();
     testRecordedNotePairing();
+    testSharedChordTrack();
     testInternalTransport();
     testExpressionMapImport();
     testLyricRoundTrip();

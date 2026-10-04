@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "FileIO/DrumMapIO.h"
 #include "FileIO/MidiFileIO.h"
+#include "Util/VarUtil.h"
 
 namespace pme
 {
@@ -25,6 +26,8 @@ PowerMidiEditorAudioProcessor::PowerMidiEditorAudioProcessor()
     // A fresh instance starts empty — the demo content is for the browser dev
     // mock only, not for real sessions.
     loadUiPrefs();
+    chordShare = std::make_unique<SharedChordTrack>();
+    startTimerHz (30);
     if (uiPrefsFile().existsAsFile())
     {
         // Keep the parsed var alive — see browserFolders().
@@ -100,6 +103,84 @@ void PowerMidiEditorAudioProcessor::addDemoContent()
     doc->setProperty ("cc", ccArr);
     doc->setProperty ("pb", pbArr);
     document.loadFromVar (juce::var (doc));
+}
+
+//==============================================================================
+// Shared chord track: canonical JSON is [ { s, l, r, q }, ... ] (no ids —
+// ids are assigned fresh on import; only the musical content is shared).
+static juce::String chordsToSharedJson (const DocumentSnapshot& snap)
+{
+    juce::Array<juce::var> arr;
+    arr.ensureStorageAllocated ((int) snap.chords.size());
+    for (const auto& c : snap.chords)
+    {
+        auto o = new juce::DynamicObject();
+        o->setProperty ("s", c.start);
+        o->setProperty ("l", c.length);
+        o->setProperty ("r", c.root);
+        o->setProperty ("q", c.quality);
+        arr.add (juce::var (o));
+    }
+    return juce::JSON::toString (juce::var (arr));
+}
+
+void PowerMidiEditorAudioProcessor::publishChordsShared()
+{
+    if (chordShare == nullptr || ! chordShare->valid() || ! settings.chordSync)
+        return;
+    const auto json = chordsToSharedJson (*document.getSnapshot());
+    if (json == lastPublishedChords)
+        return; // nothing changed since the last publish/pull
+    uint32_t v = 0;
+    if (chordShare->publish (json, v))
+    {
+        lastPublishedChords = json;
+        chordShareVersionSeen = v;
+    }
+}
+
+void PowerMidiEditorAudioProcessor::pollChordsShared()
+{
+    if (chordShare == nullptr || ! chordShare->valid() || ! settings.chordSync)
+        return;
+    const uint32_t v = chordShare->currentVersion();
+    if (v == chordShareVersionSeen)
+        return;
+    chordShareVersionSeen = v;
+    juce::String json;
+    if (! chordShare->fetch (json))
+        return;
+    auto parsed = juce::JSON::parse (json);
+    auto* arr = parsed.getArray();
+    if (arr == nullptr)
+        return;
+    std::vector<ChordEvent> chords;
+    chords.reserve (arr->size());
+    juce::uint32 id = 1;
+    for (auto& cv : *arr)
+    {
+        auto* o = cv.getDynamicObject();
+        if (o == nullptr)
+            continue;
+        ChordEvent c;
+        c.id = id++;
+        c.start = propNum (*o, "s");
+        c.length = propNum (*o, "l", 1.0);
+        c.root = (int) propNum (*o, "r");
+        c.quality = (int) propNum (*o, "q");
+        chords.push_back (c);
+    }
+    // Not undoable here: the local undo stack only tracks this instance's own
+    // edits. The cache update below also prevents re-publishing the content
+    // we just received.
+    document.setChordsExternal (chords);
+    lastPublishedChords = chordsToSharedJson (*document.getSnapshot());
+}
+
+void PowerMidiEditorAudioProcessor::timerCallback()
+{
+    pollChordsShared();
+    publishChordsShared();
 }
 
 //==============================================================================
@@ -444,6 +525,8 @@ void PowerMidiEditorAudioProcessor::updateSettingsFromUi (const juce::var& v)
         settings.autoQuantizeInput = (bool) o->getProperty ("autoQuantizeInput");
     if (o->hasProperty ("browserAutoChords"))
         settings.browserAutoChords = (bool) o->getProperty ("browserAutoChords");
+    if (o->hasProperty ("chordSync"))
+        settings.chordSync = (bool) o->getProperty ("chordSync");
     if (o->hasProperty ("snapBypass"))
         settings.snapBypass = o->getProperty ("snapBypass").toString();
     if (o->hasProperty ("dupModifier"))
@@ -578,6 +661,7 @@ void PowerMidiEditorAudioProcessor::saveUiPrefs() const
     o->setProperty ("snapBypass", settings.snapBypass);
     o->setProperty ("dupModifier", settings.dupModifier);
     o->setProperty ("browserAutoChords", settings.browserAutoChords);
+    o->setProperty ("chordSync", settings.chordSync);
     if (! settings.shortcuts.isVoid())
         o->setProperty ("shortcuts", settings.shortcuts);
     const auto json = juce::JSON::toString (parsed, juce::JSON::FormatOptions().withSpacing (juce::JSON::Spacing::multiLine));
@@ -599,6 +683,7 @@ void PowerMidiEditorAudioProcessor::loadUiPrefs()
     settings.snapBypass = propStr (*o, "snapBypass", settings.snapBypass.toRawUTF8());
     settings.dupModifier = propStr (*o, "dupModifier", settings.dupModifier.toRawUTF8());
     settings.browserAutoChords = propBool (*o, "browserAutoChords", settings.browserAutoChords);
+    settings.chordSync = propBool (*o, "chordSync", settings.chordSync);
     auto sc = o->getProperty ("shortcuts");
     if (! sc.isVoid())
         settings.shortcuts = sc;

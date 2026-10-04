@@ -22,6 +22,7 @@ struct PluginSettings
     juce::String dupModifier = "alt";     // modifier that drag-copies: alt|ctrl|shift|none
     juce::String lang = "en";             // UI language: en|zhHans|zhHant|ja
     bool browserAutoChords = true;        // midi browser load: analyze the chord track
+    bool chordSync = true;                // share the chord track across instances
 
     juce::var toVar() const
     {
@@ -40,6 +41,7 @@ struct PluginSettings
         o->setProperty ("dupModifier", dupModifier);
         o->setProperty ("lang", lang);
         o->setProperty ("browserAutoChords", browserAutoChords);
+        o->setProperty ("chordSync", chordSync);
         return juce::var (o);
     }
 
@@ -61,6 +63,7 @@ struct PluginSettings
         dupModifier = propStr (*o, "dupModifier", "alt");
         lang = propStr (*o, "lang", "en");
         browserAutoChords = propBool (*o, "browserAutoChords", true);
+        chordSync = propBool (*o, "chordSync", true);
     }
 };
 

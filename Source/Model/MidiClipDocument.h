@@ -141,6 +141,10 @@ public:
 
     // Expression map (message thread; not undoable — published immediately).
     void setArticulations (const std::vector<ArticulationDef>& arts);
+
+    // Chord track replacement from an EXTERNAL source (shared-memory sync).
+    // Not undoable: each instance's undo stack only tracks its own edits.
+    void setChordsExternal (const std::vector<ChordEvent>& imported);
     const std::vector<ArticulationDef>& getArticulations() const { return articulations; }
 
     void undo();

@@ -181,6 +181,7 @@ export const useStore = create<StoreState>((set, get) => ({
     triplet: false, lengthQuantize: 'grid', autoQuantizeInput: false, browserAutoChords: true,
     snapBypass: 'shift',
     dupModifier: 'alt',
+    chordSync: true,
     lang: 'en',
   },
   ctrlPressed: false,

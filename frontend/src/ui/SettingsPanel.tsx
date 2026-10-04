@@ -178,6 +178,17 @@ export function SettingsPanel(): React.ReactElement | null {
             <p className="settings-note">
               {t('set.autoChordsNote')}
             </p>
+            <div className="settings-row">
+              <span className="settings-label">{t('set.chordSync')}</span>
+              <button className={`mini-btn ${settings.chordSync !== false ? 'on' : ''}`}
+                title={t('set.chordSyncNote')}
+                onClick={() => updateSettings({ chordSync: settings.chordSync === false })}>
+                {settings.chordSync !== false ? t('set.on') : t('set.off')}
+              </button>
+            </div>
+            <p className="settings-note">
+              {t('set.chordSyncNote')}
+            </p>
           </div>
         )}
 
