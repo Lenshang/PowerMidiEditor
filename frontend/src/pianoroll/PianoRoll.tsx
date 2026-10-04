@@ -175,13 +175,21 @@ export function PianoRoll(): React.ReactElement {
 
     // notes (with drag previews)
     const drag = dragRef.current;
-    const overrides = drag && (drag.mode === 'move' || drag.mode === 'resize')
+    // duplicate drag: originals stay put on screen and the moving COPIES are
+    // previewed as ghosts — hiding the source notes mid-drag felt broken
+    const dupDrag = drag != null && drag.duplicate && drag.mode === 'move';
+    const overrides = drag && (drag.mode === 'move' || drag.mode === 'resize') && !dupDrag
       ? new Map(drag.ghosts) : null;
     const erased = drag && drag.mode === 'erase' ? drag.eraseIds : null;
     const ghosts: Note[] = drag && (drag.mode === 'draw' || drag.mode === 'spray')
       ? drag.newNotes.map((n, i) => ({
           id: -1 - i, p: n.p, s: n.s, l: n.l, v: n.v, m: false, c: n.c, a: n.a,
         }))
+      : dupDrag
+      ? [...drag!.ghosts].map(([id, g], i) => {
+          const src = st.doc.notes.find((n) => n.id === id);
+          return src ? { id: -1 - i, p: g.p, s: g.s, l: g.l, v: src.v, m: false, c: src.c, a: src.a } : null;
+        }).filter((n): n is Note => n != null)
       : [];
     const effectiveNotes = st.doc.notes
       .filter((n) => erased == null || !erased.has(n.id))
@@ -420,6 +428,15 @@ export function PianoRoll(): React.ReactElement {
     lastSprayCell: null, moved: false, lastPreviewPitch: -1,
   });
 
+  /** True while the configured drag-duplicate modifier is held. */
+  const dupRequested = (e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }): boolean => {
+    const mod = useStore.getState().settings.dupModifier ?? 'alt';
+    if (mod === 'none') return false;
+    if (mod === 'shift') return e.shiftKey;
+    if (mod === 'alt') return e.altKey;
+    return e.ctrlKey || e.metaKey;
+  };
+
   /** True while the configured snap-bypass modifier is held (live per event). */
   const snapBypassed = (e: { shiftKey: boolean; altKey: boolean; ctrlKey: boolean }): boolean => {
     const mod = useStore.getState().settings.snapBypass ?? 'shift';
@@ -435,7 +452,7 @@ export function PianoRoll(): React.ReactElement {
     const v = st.view;
     // drum hits are point markers — no visible length, so no resize edge
     const drag = makeDrag(st.drumMode ? 'move' : x >= xOfPpq(v, hit.s + hit.l) - 6 ? 'resize' : 'move', x, y);
-    drag.duplicate = e.altKey;
+    drag.duplicate = dupRequested(e);
     if (st.selection.includes(hit.id)) {
       if (e.ctrlKey || e.metaKey) {
         // ctrl-click a selected note: toggle it OFF, no move starts
@@ -831,7 +848,17 @@ export function PianoRoll(): React.ReactElement {
             const o = drag.originals.get(id)!;
             const g = drag.ghosts.get(id)!;
             const src = st.doc.notes.find((n) => n.id === id)!;
-            return { op: 'add' as const, note: { p: g.p, s: g.s, l: o.l, v: src.v, m: src.m, c: src.c, a: src.a } };
+            return { op: 'add' as const, note: { p: g.p, s: g.s, l: o.l, v: src.v, m: src.m, c: src.c, a: src.a, ly: src.ly } };
+          });
+          // selection moves to the copies once the doc push lands, so the
+          // dragged clones stay selected (repeated drags keep cloning them)
+          const beforeIds = new Set(st.doc.notes.map((n) => n.id));
+          const off = getBridge().onEvent((ev: unknown) => {
+            const e = ev as { kind?: string };
+            if (e.kind !== 'doc') return;
+            off();
+            const st2 = useStore.getState();
+            st2.setSelection(st2.doc.notes.filter((n) => !beforeIds.has(n.id)).map((n) => n.id));
           });
           st.editDoc(ops, t('pr.copyDrag'));
         } else {

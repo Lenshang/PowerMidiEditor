@@ -19,6 +19,7 @@ struct PluginSettings
     juce::String lengthQuantize = "grid"; // "off" | "grid"
     bool autoQuantizeInput = false;
     juce::String snapBypass = "shift";    // modifier bypassing snap: shift|alt|ctrl|none
+    juce::String dupModifier = "alt";     // modifier that drag-copies: alt|ctrl|shift|none
     juce::String lang = "en";             // UI language: en|zhHans|zhHant|ja
     bool browserAutoChords = true;        // midi browser load: analyze the chord track
 
@@ -36,6 +37,7 @@ struct PluginSettings
         o->setProperty ("lengthQuantize", lengthQuantize);
         o->setProperty ("autoQuantizeInput", autoQuantizeInput);
         o->setProperty ("snapBypass", snapBypass);
+        o->setProperty ("dupModifier", dupModifier);
         o->setProperty ("lang", lang);
         o->setProperty ("browserAutoChords", browserAutoChords);
         return juce::var (o);
@@ -56,6 +58,7 @@ struct PluginSettings
         lengthQuantize = propStr (*o, "lengthQuantize", "grid");
         autoQuantizeInput = propBool (*o, "autoQuantizeInput", false);
         snapBypass = propStr (*o, "snapBypass", "shift");
+        dupModifier = propStr (*o, "dupModifier", "alt");
         lang = propStr (*o, "lang", "en");
         browserAutoChords = propBool (*o, "browserAutoChords", true);
     }

@@ -446,6 +446,8 @@ void PowerMidiEditorAudioProcessor::updateSettingsFromUi (const juce::var& v)
         settings.browserAutoChords = (bool) o->getProperty ("browserAutoChords");
     if (o->hasProperty ("snapBypass"))
         settings.snapBypass = o->getProperty ("snapBypass").toString();
+    if (o->hasProperty ("dupModifier"))
+        settings.dupModifier = o->getProperty ("dupModifier").toString();
     if (o->hasProperty ("lang"))
         settings.lang = o->getProperty ("lang").toString();
     saveUiPrefs(); // remember UI preferences for future instances
@@ -574,6 +576,7 @@ void PowerMidiEditorAudioProcessor::saveUiPrefs() const
     o->setProperty ("theme", settings.theme);
     o->setProperty ("lang", settings.lang);
     o->setProperty ("snapBypass", settings.snapBypass);
+    o->setProperty ("dupModifier", settings.dupModifier);
     o->setProperty ("browserAutoChords", settings.browserAutoChords);
     if (! settings.shortcuts.isVoid())
         o->setProperty ("shortcuts", settings.shortcuts);
@@ -594,6 +597,7 @@ void PowerMidiEditorAudioProcessor::loadUiPrefs()
     settings.theme = propStr (*o, "theme", settings.theme.toRawUTF8());
     settings.lang = propStr (*o, "lang", settings.lang.toRawUTF8());
     settings.snapBypass = propStr (*o, "snapBypass", settings.snapBypass.toRawUTF8());
+    settings.dupModifier = propStr (*o, "dupModifier", settings.dupModifier.toRawUTF8());
     settings.browserAutoChords = propBool (*o, "browserAutoChords", settings.browserAutoChords);
     auto sc = o->getProperty ("shortcuts");
     if (! sc.isVoid())

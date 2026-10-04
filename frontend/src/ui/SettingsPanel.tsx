@@ -152,6 +152,22 @@ export function SettingsPanel(): React.ReactElement | null {
               {t('set.snapBypassNote')}
             </p>
             <div className="settings-row">
+              <span className="settings-label">{t('set.dupModifier')}</span>
+              <select
+                className="tb-select"
+                value={settings.dupModifier ?? 'alt'}
+                onChange={(e) => updateSettings({ dupModifier: e.target.value })}
+              >
+                <option value="alt">Alt</option>
+                <option value="ctrl">Ctrl</option>
+                <option value="shift">Shift</option>
+                <option value="none">{t('set.none')}</option>
+              </select>
+            </div>
+            <p className="settings-note">
+              {t('set.dupModifierNote')}
+            </p>
+            <div className="settings-row">
               <span className="settings-label">{t('set.autoChords')}</span>
               <button className={`mini-btn ${settings.browserAutoChords ? 'on' : ''}`}
                 title={t('set.autoChordsNote')}

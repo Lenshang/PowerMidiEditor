@@ -180,6 +180,7 @@ export const useStore = create<StoreState>((set, get) => ({
     theme: 'dark', shortcuts: {}, gridPpq: 0.25, snap: true,
     triplet: false, lengthQuantize: 'grid', autoQuantizeInput: false, browserAutoChords: true,
     snapBypass: 'shift',
+    dupModifier: 'alt',
     lang: 'en',
   },
   ctrlPressed: false,

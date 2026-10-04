@@ -129,6 +129,8 @@ export interface SettingsState {
   autoQuantizeInput: boolean;
   /** modifier held while dragging to bypass grid snap ('shift'|'alt'|'ctrl'|'none') */
   snapBypass: string;
+  /** drag-copy modifier: alt|ctrl|shift|none */
+  dupModifier?: string;
   /** UI language ('en' | 'zhHans' | 'zhHant' | 'ja') */
   lang: string;
   /** midi browser load: analyze the chord track from the loaded notes */
